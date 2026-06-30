@@ -6,7 +6,7 @@ Sistema pessoal modular para registrar rotina, corpo, leitura, hábitos e listas
 
 > 🔒 **Status atual:** v0.1 em validação real de 7 dias. Novas features estão congeladas até o fim do teste. Ver [`docs/validation-7-days.md`](docs/validation-7-days.md).
 >
-> 🔌 **Modo de dados atual:** Mobile → Supabase direto (sem backend Express rodando). Temporário, só para validação visual. Ver [`docs/supabase-direct-mode.md`](docs/supabase-direct-mode.md).
+> 📱 **v0.1 local-only:** app mobile salva dados localmente para validação em APK Android. Sem servidor, sem Supabase, sem `.env` obrigatório. Ver [`docs/local-only-apk.md`](docs/local-only-apk.md).
 
 ---
 
@@ -211,4 +211,5 @@ O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **is
 - [`docs/local-visual-run.md`](docs/local-visual-run.md) — Passo a passo para rodar banco, API e mobile localmente
 - [`docs/supabase-direct-mode.md`](docs/supabase-direct-mode.md) — Modo simplificado: mobile → Supabase direto
 - [`docs/supabase-server-sdk.md`](docs/supabase-server-sdk.md) — Preparação futura: `@supabase/server` para auth real e RLS (ainda não ativo)
+- [`docs/local-only-apk.md`](docs/local-only-apk.md) — Modo atual: dados locais no aparelho, sem servidor
 - [`docs/visual-checklist.md`](docs/visual-checklist.md) — Checklist de validação visual módulo a módulo

@@ -6,10 +6,11 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, RefreshControl, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { getToday, DataError as ApiError } from '../../lib/data.js';
+import { resetDbWithSeed } from '../../lib/localDb.js';
 import type { TodayResponse } from '../../types/today.js';
 import {
   Card,
@@ -247,10 +248,33 @@ export default function TodayScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Hoje</Text>
-          {data && (
-            <Text style={styles.headerDate}>{formatDate(data.date)}</Text>
-          )}
+          <View>
+            <Text style={styles.headerTitle}>Hoje</Text>
+            {data && (
+              <Text style={styles.headerDate}>{formatDate(data.date)}</Text>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              Alert.alert(
+                'Resetar dados de teste',
+                'Apaga todos os dados e recria o seed inicial. Continuar?',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Resetar',
+                    style: 'destructive',
+                    onPress: () => {
+                      void resetDbWithSeed().then(() => void load());
+                    },
+                  },
+                ],
+              );
+            }}
+            style={styles.resetBtn}
+          >
+            <Text style={styles.resetBtnText}>↺ seed</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Cards */}
@@ -283,6 +307,21 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 8,
     paddingBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  resetBtn: {
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 2,
+  },
+  resetBtnText: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
   headerTitle: {
     fontSize: 32,
