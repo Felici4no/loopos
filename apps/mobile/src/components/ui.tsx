@@ -11,6 +11,7 @@ import {
   Text,
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
   StyleSheet,
   type ViewStyle,
   type TextStyle,
@@ -99,14 +100,20 @@ export function LoadingState() {
 interface ErrorStateProps {
   message: string;
   hint?: string;
+  onRetry?: () => void;
 }
 
-export function ErrorState({ message, hint }: ErrorStateProps) {
+export function ErrorState({ message, hint, onRetry }: ErrorStateProps) {
   return (
     <View style={styles.center}>
       <Text style={styles.errorIcon}>⚠</Text>
       <Text style={styles.errorText}>{message}</Text>
       {hint && <Text style={styles.stateHint}>{hint}</Text>}
+      {onRetry && (
+        <TouchableOpacity style={styles.retryBtn} onPress={onRetry}>
+          <Text style={styles.retryBtnText}>Tentar novamente</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -197,6 +204,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
     paddingHorizontal: 24,
+  },
+  retryBtn: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  retryBtnText: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyRow: {
     alignItems: 'center',

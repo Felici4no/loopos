@@ -35,7 +35,7 @@ function WorkoutsCard({ data }: { data: TodayResponse['workouts'] }) {
     return (
       <Card>
         <SectionTitle label="Corpo" />
-        <EmptyState message="Nenhum treino hoje" hint="Registre via POST /api/body/workouts" />
+        <EmptyState message="Nenhum treino hoje" hint="Registre na aba Corpo" />
       </Card>
     );
   }
@@ -68,7 +68,7 @@ function RhythmCard({ data }: { data: TodayResponse['rhythm'] }) {
     return (
       <Card>
         <SectionTitle label="Ritmo" />
-        <EmptyState message="Nenhum hábito registrado hoje" />
+        <EmptyState message="Nenhum hábito registrado hoje" hint="Registre na aba Ritmo" />
       </Card>
     );
   }
@@ -100,7 +100,7 @@ function ReadingCard({ data }: { data: TodayResponse['reading'] }) {
     return (
       <Card>
         <SectionTitle label="Leitura" />
-        <EmptyState message="Nenhuma sessão de leitura hoje" />
+        <EmptyState message="Nenhuma sessão de leitura hoje" hint="Registre na aba Leitura" />
       </Card>
     );
   }
@@ -140,7 +140,7 @@ function ListsCard({ data }: { data: TodayResponse['lists'] }) {
     return (
       <Card>
         <SectionTitle label="Listas" />
-        <EmptyState message="Nenhuma lista atualizada hoje" />
+        <EmptyState message="Nenhuma lista atualizada hoje" hint="Crie ou edite na aba Listas" />
       </Card>
     );
   }
@@ -225,6 +225,7 @@ export default function TodayScreen() {
         <ErrorState
           message={error}
           hint={`API: ${process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'}`}
+          onRetry={() => void load()}
         />
       </SafeAreaView>
     );

@@ -496,6 +496,9 @@ export default function RhythmScreen() {
         <View style={styles.center}>
           <Text style={styles.errorIcon}>⚠</Text>
           <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => void load()}>
+            <Text style={styles.retryBtnText}>Tentar novamente</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -518,7 +521,7 @@ export default function RhythmScreen() {
               <Text style={styles.emptyIcon}>🔁</Text>
               <Text style={styles.emptyTitle}>Nenhum contador ainda</Text>
               <Text style={styles.emptyHint}>
-                Crie um contador para rastrear hábitos, ciclos ou frequências diárias.
+                Crie um contador para acompanhar um ciclo, hábito ou frequência diária.
               </Text>
               <TouchableOpacity style={styles.emptyAddBtn} onPress={() => setShowAdd(true)}>
                 <Text style={styles.addBtnText}>+ Criar contador</Text>
@@ -751,4 +754,13 @@ const styles = StyleSheet.create({
   stateText: { color: colors.textSecondary, fontSize: 15 },
   errorIcon: { fontSize: 28, color: colors.error },
   errorText: { color: colors.error, fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
+  retryBtn: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  retryBtnText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
 });

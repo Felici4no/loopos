@@ -139,6 +139,48 @@ Todos os 5 módulos do v0.1 estão funcionais. Próximo passo: validar 7 dias de
 
 ---
 
+## Como validar o MVP v0.1 em 7 dias
+
+O LoopOS v0.1 está pronto para o teste central do produto: **uso diário real por 7 dias consecutivos sem abandono.** Protocolo completo em [`docs/validation-7-days.md`](docs/validation-7-days.md).
+
+### Setup mínimo para o teste
+
+```bash
+# 1. API rodando (Terminal 1)
+pnpm --filter @loopos/server dev
+
+# 2. Mobile rodando (Terminal 2)
+pnpm --filter @loopos/mobile start
+```
+
+### Configurar a URL da API conforme o ambiente
+
+Edite `apps/mobile/.env`:
+
+| Ambiente | `EXPO_PUBLIC_API_URL` |
+|----------|------------------------|
+| Emulador iOS / mesmo Mac | `http://localhost:3333` |
+| Emulador Android | `http://10.0.2.2:3333` |
+| **Celular físico** (recomendado para o teste de 7 dias) | `http://192.168.x.x:3333` — seu IP local |
+
+> Celular físico não acessa `localhost` da sua máquina. Descubra seu IP com `ifconfig | grep "inet " | grep -v 127.0.0.1` (macOS/Linux) e use-o no lugar de `localhost`. O celular e o computador precisam estar na mesma rede Wi-Fi.
+
+### Fluxos a testar todos os dias
+
+1. Abrir o app → ver a tela **Hoje**.
+2. Registrar algo em **Corpo** (ex: `10km 4x11`) ou marcar um hábito em **Ritmo**.
+3. Se estiver lendo algo, registrar uma sessão em **Leitura**.
+4. Criar ou marcar um item em **Listas**.
+5. Voltar para **Hoje** e confirmar que tudo aparece atualizado.
+
+Checklist diário completo, perguntas de avaliação e critérios de sucesso/falha estão em [`docs/validation-7-days.md`](docs/validation-7-days.md).
+
+### Segurança neste ambiente de teste
+
+O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **isso não é seguro e não deve ir para produção.** Não insira dados pessoais sensíveis reais (senhas, documentos, dados financeiros) durante o teste. Supabase Auth substitui esse mecanismo após a validação do MVP (ver ADR-013 em `docs/decisions.md`).
+
+---
+
 ## Scripts úteis
 
 | Script | Descrição |
@@ -159,3 +201,5 @@ Todos os 5 módulos do v0.1 estão funcionais. Próximo passo: validar 7 dias de
 - [`docs/roadmap.md`](docs/roadmap.md) — v0.1 → v0.5
 - [`docs/decisions.md`](docs/decisions.md) — ADRs (Architecture Decision Records)
 - [`docs/api-tests.md`](docs/api-tests.md) — Testes manuais com curl
+- [`docs/validation-7-days.md`](docs/validation-7-days.md) — Protocolo de validação de 7 dias do MVP
+- [`docs/mvp-checklist.md`](docs/mvp-checklist.md) — Checklist técnico de fechamento do v0.1

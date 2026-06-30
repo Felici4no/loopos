@@ -2,7 +2,7 @@
 
 ---
 
-## v0.1 — Fundação (em andamento)
+## v0.1 — Fundação (estabilização)
 **Meta: 7 dias de uso contínuo sem abandono.**
 
 - [x] Monorepo pnpm + Turborepo + TypeScript strict
@@ -10,18 +10,19 @@
 - [x] API Express com CRUDs de Corpo, Ritmo, Leitura, Listas
 - [x] GET /api/today como agregação real (sem daily_entries)
 - [x] Seed de desenvolvimento com user_test_1
-- [x] **App mobile base com navegação 5 abas**
-- [x] **Tela Hoje funcional consumindo /api/today**
-- [x] **Módulo Corpo mobile funcional (registro rápido + histórico + delete)**
-- [x] **Parser local de input (10km 4x11, 5km 3x8, etc.)**
-- [x] **Tela Hoje recarrega ao voltar do módulo Corpo (useFocusEffect)**
-- [x] **Módulo Leitura mobile funcional (biblioteca + sessões + progresso + delete)**
-- [x] **Módulo Ritmo mobile funcional (trackers + eventos + streak + anti-dup)**
-- [x] **Módulo Listas mobile funcional (raiz → item → subitem, 2 níveis)**
-- [x] **Todos os 5 módulos mobile funcionais — pronto para validar 7 dias de uso**
-- [ ] Autenticação real (Supabase Auth)
-- [ ] Telas CRUD completas dos 4 módulos
-- [ ] Persistência offline-first básica
+- [x] App mobile base com navegação 5 abas
+- [x] Tela Hoje funcional consumindo /api/today
+- [x] Módulo Corpo mobile funcional (registro rápido + histórico + delete)
+- [x] Módulo Leitura mobile funcional (biblioteca + sessões + progresso + delete)
+- [x] Módulo Ritmo mobile funcional (trackers + eventos + streak + anti-dup)
+- [x] Módulo Listas mobile funcional (raiz → item → subitem, 2 níveis)
+- [x] **Todos os 5 módulos mobile funcionais**
+- [x] **Estados vazios padronizados e orientados à próxima ação**
+- [x] **Estado de erro com botão "Tentar novamente" em todas as telas**
+- [x] **`docs/validation-7-days.md` e `docs/mvp-checklist.md` criados**
+- [ ] **Validação real de 7 dias em execução** ← etapa atual
+- [ ] Autenticação real (Supabase Auth) — após validação aprovada
+- [ ] Unique constraint de anti-duplicidade no banco — após validação aprovada
 
 ---
 
