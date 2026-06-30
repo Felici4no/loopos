@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import { healthRouter } from './health.routes.js';
+import { debugRouter } from './debug.routes.js';
 import { todayRouter } from '../modules/today/today.routes.js';
 import { bodyRouter } from '../modules/body/body.routes.js';
 import { rhythmRouter } from '../modules/rhythm/rhythm.routes.js';
@@ -18,5 +19,10 @@ apiRouter.use('/body', bodyRouter);
 apiRouter.use('/rhythm', rhythmRouter);
 apiRouter.use('/reading', readingRouter);
 apiRouter.use('/lists', listsRouter);
+
+// Debug: apenas fora de produção
+if (process.env['NODE_ENV'] !== 'production') {
+  apiRouter.use('/debug', debugRouter);
+}
 
 export { healthRouter };

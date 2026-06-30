@@ -165,3 +165,43 @@ Formato: data, decisão, motivação, alternativas consideradas.
 **Motivação:** Testes de integração podem importar `createApp()` e usar `supertest` sem precisar de um servidor HTTP real rodando em porta. Isso simplifica o setup de testes futuros.
 
 **Alternativas consideradas:** Tudo em `index.ts` (descartado — dificulta testes), framework com DI (descartado — overhead desnecessário no v0.1).
+
+---
+
+## ADR-013 — Autenticação temporária via header `x-user-id`
+**Data:** 2025-06 (Etapa 4 — Validação)
+**Status:** Aceita / Temporária
+
+**Decisão:** Durante o desenvolvimento pré-Supabase Auth, a identidade do usuário é lida do header HTTP `x-user-id`. O middleware `requireAuth` em `server/src/middleware/auth.ts` extrai e valida esse header, populando `req.userId` para todos os handlers.
+
+**Motivação:** Permite testar todos os CRUDs com isolamento real por usuário (cada query filtra por `userId`) sem depender de JWT ou OAuth. O swap para Supabase Auth na Etapa 4 é cirúrgico: basta reescrever `requireAuth` para ler e validar o JWT, mantendo `req.userId` como contrato estável para todos os handlers.
+
+**Restrições:**
+- **NUNCA usar em produção.** Qualquer cliente pode fingir ser qualquer userId.
+- O header não é enviado automaticamente pelo browser — requer configuração explícita no cliente mobile/web.
+- O seed cria `user_test_1` com id fixo para facilitar testes manuais.
+
+**Contrato que permanece após a troca:**
+- `req.userId: string` estará disponível em todos os handlers autenticados.
+- Todos os handlers filtram dados por `userId` — isso não muda com a autenticação real.
+
+**Quando trocar:** Assim que a tela de login for implementada no mobile (Etapa 4). Supabase Auth retorna um JWT; `requireAuth` deve verificá-lo com `supabase.auth.getUser(token)` e usar `user.id` como `req.userId`.
+
+**Alternativas consideradas:** JWT fake assinado localmente (mais seguro mas mais complexo de testar), sessão por cookie (incompatível com mobile-first), sem autenticação alguma (descartado — handlers sem userId filtrado não podem ser testados realisticamente).
+
+---
+
+## ADR-014 — Padrão de resposta da API
+**Data:** 2025-06 (Etapa 4 — Validação)
+**Status:** Aceita
+
+**Decisão:** Todas as respostas da API seguem o padrão:
+
+- `GET` (lista): `200 { "data": [...] }`
+- `GET` (item): `200 { "data": {...} }`
+- `POST`: `201 { "data": {...} }`
+- `PATCH`: `200 { "data": {...} }`
+- `DELETE`: `204` (sem body)
+- Erros: `{ "error": { "message": "...", "code": "..." } }` com status adequado
+
+**Motivação:** Envelope `{ "data" }` facilita extensão futura (adicionar `meta`, `pagination`, `links`) sem quebrar clientes. DELETE retorna 204 em vez de `{ success: true }` — semântica HTTP padrão, sem body desnecessário. Erros com `code` string permitem que o cliente mobile trate erros por tipo sem depender de mensagem localizada.

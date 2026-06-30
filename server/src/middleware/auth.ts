@@ -24,9 +24,8 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
   const userId = req.headers['x-user-id'];
 
   if (!userId || typeof userId !== 'string' || userId.trim() === '') {
-    return next(
-      new AppError('Header x-user-id obrigatório', 401, 'UNAUTHORIZED'),
-    );
+    next(new AppError('Header x-user-id obrigatório', 401, 'UNAUTHORIZED'));
+    return;
   }
 
   req.userId = userId.trim();

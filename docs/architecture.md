@@ -66,12 +66,36 @@ O endpoint `GET /api/today` agrega dados do dia corrente dos outros módulos. N�
 ## Fluxo de dados (v0.1)
 
 ```
-Mobile App
-  → REST API (Express + validateBody)
-    → Zod (validação de input)
-    → Prisma (persistência)
-    → PostgreSQL/Supabase
+Cliente (curl / mobile / web)
+  │
+  ├─ Header: x-user-id: <userId>           ← autenticação temporária (ADR-013)
+  │                                           substituída por JWT Supabase na Etapa 4
+  ▼
+Express (app.ts)
+  │
+  ├─ requireAuth middleware                 ← popula req.userId
+  ├─ validateBody(zodSchema) middleware     ← valida e coerce req.body via Zod
+  │
+  ▼
+Handler (modules/<módulo>/<módulo>.handlers.ts)
+  │
+  ├─ prisma.<model>.findMany({ where: { userId } })
+  ├─ prisma.<model>.create({ data: { userId, ...body } })
+  └─ prisma.<model>.update/delete (após verificar ownership)
+  │
+  ▼
+PrismaClient — singleton em lib/prisma.ts
+  │
+  ├─ Pool de conexões → DATABASE_URL (Supabase Transaction Pooler)
+  └─ Direct connection → DIRECT_URL (migrations apenas)
+  │
+  ▼
+PostgreSQL (Supabase)
 ```
+
+### Isolamento de dados por usuário
+
+Todos os handlers filtram por `userId` em cada query. Um `DELETE /api/body/workouts/:id` faz `findFirst({ where: { id, userId } })` antes de deletar — usuário A nunca acessa dados de usuário B.
 
 ---
 

@@ -58,7 +58,7 @@ export type UpdateTrackerInput = z.infer<typeof updateTrackerSchema>;
 const trackerEventType = z.enum(['check', 'value']);
 
 export const createTrackerEventSchema = z.object({
-  trackerId: z.string().cuid('ID de tracker inválido'),
+  trackerId: z.string().min(1, 'trackerId obrigatório'),
   date: isoDate,
   eventType: trackerEventType.default('check'),
   value: z.number().optional(),
@@ -90,7 +90,7 @@ export type UpdateBookInput = z.infer<typeof updateBookSchema>;
 
 export const createReadingSessionSchema = z
   .object({
-    bookId: z.string().cuid('ID de livro inválido'),
+    bookId: z.string().min(1, 'bookId obrigatório'),
     date: isoDate,
     pagesRead: positiveInt,
     fromPage: z.number().int().min(1).optional(),
@@ -114,7 +114,7 @@ export type CreateReadingSessionInput = z.infer<typeof createReadingSessionSchem
 const listNodeType = z.enum(['LIST', 'ITEM']);
 
 export const createListNodeSchema = z.object({
-  parentId: z.string().cuid('ID de nó pai inválido').optional(),
+  parentId: z.string().min(1, 'parentId obrigatório').optional(),
   title: z.string().min(1).max(500),
   content: z.string().max(5000).optional(),
   nodeType: listNodeType.default('ITEM'),

@@ -96,8 +96,12 @@ export const updateBook: RequestHandler = async (req, res, next) => {
         ...(body.totalPages !== undefined && { totalPages: body.totalPages }),
         ...(body.currentPage !== undefined && { currentPage: body.currentPage }),
         ...(body.status !== undefined && { status: body.status }),
-        ...(body.startedAt !== undefined && { startedAt: new Date(body.startedAt) }),
-        ...(body.finishedAt !== undefined && { finishedAt: new Date(body.finishedAt) }),
+        ...(body.startedAt !== undefined && body.startedAt !== null && {
+          startedAt: new Date(body.startedAt),
+        }),
+        ...(body.finishedAt !== undefined && body.finishedAt !== null && {
+          finishedAt: new Date(body.finishedAt),
+        }),
       },
     });
 
