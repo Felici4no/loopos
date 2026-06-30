@@ -206,3 +206,5 @@ O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **is
 - [`docs/validation-7-days.md`](docs/validation-7-days.md) — Protocolo de validação de 7 dias do MVP
 - [`docs/mvp-checklist.md`](docs/mvp-checklist.md) — Checklist técnico de fechamento do v0.1
 - [`docs/android-build.md`](docs/android-build.md) — Como rodar no Expo Go e gerar APK de preview
+- [`docs/local-visual-run.md`](docs/local-visual-run.md) — Passo a passo para rodar banco, API e mobile localmente
+- [`docs/visual-checklist.md`](docs/visual-checklist.md) — Checklist de validação visual módulo a módulo
