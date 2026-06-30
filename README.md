@@ -205,3 +205,4 @@ O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **is
 - [`docs/api-tests.md`](docs/api-tests.md) — Testes manuais com curl
 - [`docs/validation-7-days.md`](docs/validation-7-days.md) — Protocolo de validação de 7 dias do MVP
 - [`docs/mvp-checklist.md`](docs/mvp-checklist.md) — Checklist técnico de fechamento do v0.1
+- [`docs/android-build.md`](docs/android-build.md) — Como rodar no Expo Go e gerar APK de preview
