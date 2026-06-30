@@ -97,6 +97,30 @@ PostgreSQL (Supabase)
 
 Todos os handlers filtram por `userId` em cada query. Um `DELETE /api/body/workouts/:id` faz `findFirst({ where: { id, userId } })` antes de deletar — usuário A nunca acessa dados de usuário B.
 
+## Mobile → API
+
+```
+apps/mobile/src/
+├─ lib/api.ts              ← cliente HTTP (fetch + x-user-id + error handling)
+├─ types/today.ts          ← tipos da resposta /api/today
+├─ components/ui.tsx       ← Screen, Card, SectionTitle, Empty/Loading/ErrorState
+├─ navigation/Navigation   ← Bottom tab com 5 abas
+└─ screens/
+   ├─ today/TodayScreen    ← chama getToday(), renderiza cards por módulo
+   ├─ body/BodyScreen       ← placeholder
+   ├─ rhythm/RhythmScreen   ← placeholder
+   ├─ reading/ReadingScreen ← placeholder
+   └─ lists/ListsScreen     ← placeholder
+```
+
+**Configuração da URL da API:**
+```
+# apps/mobile/.env
+EXPO_PUBLIC_API_URL=http://localhost:3333      # emulador iOS / mesmo Mac
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3333      # emulador Android
+EXPO_PUBLIC_API_URL=http://192.168.x.x:3333   # celular físico (IP local)
+```
+
 ---
 
 ## Pacotes compartilhados

@@ -1,39 +1,35 @@
 /**
  * LoopOS Mobile — Root Component
  *
- * Navigation and module wiring will be added in Etapa 2.
+ * Monta NavigationContainer + SafeAreaProvider + Bottom Tabs.
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import Navigation from './navigation/Navigation.js';
+import { colors } from './components/ui.js';
 
 export function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>LoopOS</Text>
-      <Text style={styles.subtitle}>Sua rotina, no seu ritmo.</Text>
-      <StatusBar style="light" />
-    </View>
+    <SafeAreaProvider>
+      <NavigationContainer
+        theme={{
+          dark: true,
+          colors: {
+            primary: colors.accent,
+            background: colors.bg,
+            card: colors.surface,
+            text: colors.text,
+            border: colors.border,
+            notification: colors.accent,
+          },
+        }}
+      >
+        <Navigation />
+        <StatusBar style="light" />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#ffffff',
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666666',
-    marginTop: 8,
-  },
-});

@@ -8,14 +8,14 @@ Sistema pessoal modular para registrar rotina, corpo, leitura, hábitos e listas
 
 ## Stack
 
-| Camada       | Tecnologia                        |
-|--------------|-----------------------------------|
-| Mobile       | React Native + Expo               |
-| Web          | Next.js 14 (App Router)           |
-| API          | Node.js + Express                 |
-| Banco        | PostgreSQL via Supabase + Prisma  |
-| Monorepo     | pnpm workspaces + Turborepo       |
-| Linguagem    | TypeScript (strict) em tudo       |
+| Camada       | Tecnologia                          |
+|--------------|-------------------------------------|
+| Mobile       | React Native + Expo + React Navigation |
+| Web          | Next.js 14 App Router (v0.3+)       |
+| API          | Node.js + Express + Zod             |
+| Banco        | PostgreSQL via Supabase + Prisma    |
+| Monorepo     | pnpm workspaces + Turborepo         |
+| Linguagem    | TypeScript (strict) em tudo         |
 
 ---
 
@@ -24,86 +24,136 @@ Sistema pessoal modular para registrar rotina, corpo, leitura, hábitos e listas
 ```
 loopos/
 ├─ apps/
-│  ├─ mobile/         → App React Native/Expo
+│  ├─ mobile/         → App React Native/Expo (produto principal)
 │  └─ web/            → Dashboard Next.js (v0.3+)
 ├─ server/
-│  ├─ src/            → API Express
-│  └─ prisma/         → Schema e migrations
+│  ├─ src/            → API Express modular
+│  └─ prisma/         → Schema, migrations e seed
 ├─ packages/
-│  ├─ shared/         → Tipos, validators, date utils
+│  ├─ shared/         → Schemas Zod, validators, date utils
 │  └─ config/         → Constantes compartilhadas
 └─ docs/              → Documentação técnica e de produto
 ```
 
 ---
 
-## Módulos do produto
+## Como rodar
 
-| Módulo   | Descrição                                     |
-|----------|-----------------------------------------------|
-| Hoje     | Registro diário com humor e nota livre        |
-| Corpo    | Log de treinos e atividade física             |
-| Ritmo    | Trackers de hábitos e frequências             |
-| Leitura  | Biblioteca e sessões de leitura               |
-| Listas   | Listas simples com suporte a hierarquia       |
+### 1. Pré-requisitos
 
----
-
-## Setup
-
-### Pré-requisitos
 - Node.js ≥ 20
 - pnpm ≥ 9
+- Conta no [Supabase](https://supabase.com) (banco PostgreSQL)
+- Expo Go no celular ou emulador Android/iOS
 
-### Instalação
+### 2. Instalar dependências
 
 ```bash
-# Instalar dependências de todos os pacotes
 pnpm install
-
-# Verificar tipos em todos os pacotes
-pnpm typecheck
-
-# Rodar todos os apps em modo dev
-pnpm dev
 ```
 
-### Variáveis de ambiente
+### 3. Configurar o banco (API)
 
 ```bash
-# Copiar exemplo do server
+# Copiar e preencher com credenciais do Supabase
 cp server/.env.example server/.env
-# Editar DATABASE_URL com sua conexão Supabase
+```
+
+Edite `server/.env`:
+```
+DATABASE_URL="postgresql://..."   # Transaction Pooler (Supabase)
+DIRECT_URL="postgresql://..."     # Direct Connection (migrations)
+PORT=3333
+NODE_ENV=development
+```
+
+```bash
+# Criar tabelas
+pnpm --filter @loopos/server prisma:migrate
+
+# Gerar Prisma Client
+pnpm --filter @loopos/server prisma:generate
+
+# Popular banco com dados de teste
+pnpm --filter @loopos/server prisma:seed
+```
+
+### 4. Configurar o mobile
+
+```bash
+cp apps/mobile/.env.example apps/mobile/.env
+```
+
+Edite `apps/mobile/.env`:
+```bash
+# Emulador iOS ou mesmo Mac:
+EXPO_PUBLIC_API_URL=http://localhost:3333
+
+# Emulador Android:
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3333
+
+# Celular físico (substitua pelo seu IP local):
+EXPO_PUBLIC_API_URL=http://192.168.1.42:3333
+
+EXPO_PUBLIC_USER_ID=user_test_1
+```
+
+> **Como descobrir seu IP local:**
+> macOS/Linux: `ifconfig | grep "inet " | grep -v 127.0.0.1`
+> Windows: `ipconfig` → Endereço IPv4
+
+### 5. Rodar API e mobile juntos
+
+```bash
+# Terminal 1 — API
+pnpm --filter @loopos/server dev
+
+# Terminal 2 — Mobile
+pnpm --filter @loopos/mobile start
+# Escanear QR code com Expo Go no celular, ou pressionar 'a' (Android) / 'i' (iOS)
+```
+
+### 6. Validar
+
+```bash
+# API funcionando:
+curl http://localhost:3333/health
+
+# Dados do seed:
+curl -H "x-user-id: user_test_1" http://localhost:3333/api/today | jq
 ```
 
 ---
 
-## Scripts disponíveis
+## Módulos do produto
 
-| Script           | Descrição                                |
-|------------------|------------------------------------------|
-| `pnpm dev`       | Roda todos os apps em modo desenvolvimento |
-| `pnpm build`     | Build de todos os pacotes                |
-| `pnpm typecheck` | Verifica tipos em todo o monorepo        |
-| `pnpm lint`      | Lint em todos os pacotes                 |
-| `pnpm format`    | Formata código com Prettier              |
+| Módulo   | Tela mobile    | Status       |
+|----------|----------------|--------------|
+| Hoje     | TodayScreen    | ✅ Funcional  |
+| Corpo    | BodyScreen     | 🔲 Placeholder |
+| Ritmo    | RhythmScreen   | 🔲 Placeholder |
+| Leitura  | ReadingScreen  | 🔲 Placeholder |
+| Listas   | ListsScreen    | 🔲 Placeholder |
+
+---
+
+## Scripts úteis
+
+| Script | Descrição |
+|--------|-----------|
+| `pnpm --filter @loopos/server dev` | API em modo dev (hot reload) |
+| `pnpm --filter @loopos/mobile start` | Metro bundler do Expo |
+| `pnpm --filter @loopos/server prisma:seed` | Popular banco com dados de teste |
+| `pnpm --filter @loopos/server prisma:studio` | Visualizar banco no browser |
+| `pnpm typecheck` | Verificar tipos em todo o monorepo |
 
 ---
 
 ## Documentação
 
 - [`docs/product.md`](docs/product.md) — Visão do produto e módulos
-- [`docs/architecture.md`](docs/architecture.md) — Decisão pelo monorepo e estrutura
-- [`docs/database.md`](docs/database.md) — Tabelas previstas e modelagem
+- [`docs/architecture.md`](docs/architecture.md) — Arquitetura, fluxos e decisões
+- [`docs/database.md`](docs/database.md) — Modelos Prisma implementados
 - [`docs/roadmap.md`](docs/roadmap.md) — v0.1 → v0.5
 - [`docs/decisions.md`](docs/decisions.md) — ADRs (Architecture Decision Records)
-
----
-
-## Próximos passos (Etapa 2)
-
-1. Definir schema Prisma completo com todos os modelos.
-2. Criar primeira migration e conectar ao Supabase.
-3. Implementar endpoints CRUD para o módulo **Hoje**.
-4. Integrar autenticação via Supabase Auth.
-5. Conectar app mobile aos endpoints da API.
+- [`docs/api-tests.md`](docs/api-tests.md) — Testes manuais com curl

@@ -2,15 +2,19 @@
 
 ---
 
-## v0.1 — Fundação (atual)
+## v0.1 — Fundação (em andamento)
 **Meta: 7 dias de uso contínuo sem abandono.**
 
-- [ ] App mobile com os 5 módulos funcionais: Hoje, Corpo, Ritmo, Leitura, Listas.
-- [ ] API Express com endpoints CRUD para cada módulo.
-- [ ] Banco PostgreSQL com Prisma, schema completo e migrations.
-- [ ] Autenticação básica (email/senha ou magic link via Supabase Auth).
-- [ ] Navegação entre módulos via bottom tab.
-- [ ] Persistência offline-first básica (cache local com sync).
+- [x] Monorepo pnpm + Turborepo + TypeScript strict
+- [x] Prisma schema v0.1 com todos os modelos
+- [x] API Express com CRUDs de Corpo, Ritmo, Leitura, Listas
+- [x] GET /api/today como agregação real (sem daily_entries)
+- [x] Seed de desenvolvimento com user_test_1
+- [x] **App mobile base com navegação 5 abas**
+- [x] **Tela Hoje funcional consumindo /api/today**
+- [ ] Autenticação real (Supabase Auth)
+- [ ] Telas CRUD completas dos 4 módulos
+- [ ] Persistência offline-first básica
 
 ---
 
