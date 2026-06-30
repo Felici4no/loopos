@@ -1,0 +1,174 @@
+// LoopOS — Prisma Schema v0.1
+// Fonte de verdade de todas as entidades persistidas. Ver ADR-008.
+// Gerado na Etapa 2. Migrations via: pnpm --filter @loopos/server prisma:migrate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workoutEntries  WorkoutEntry[]
+  trackers        Tracker[]
+  trackerEvents   TrackerEvent[]
+  books           Book[]
+  readingSessions ReadingSession[]
+  listNodes       ListNode[]
+
+  @@map("users")
+}
+
+// ─── Body (Corpo) ─────────────────────────────────────────────────────────────
+// Cada linha representa uma sessão de treino registrada pelo usuário.
+// rawInput armazena o texto livre original antes de qualquer parsing.
+
+model WorkoutEntry {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  date        String   // YYYY-MM-DD — data do treino, sem timezone
+  runKm       Float?   @map("run_km")
+  pullupSets  Int?     @map("pullup_sets")
+  pullupReps  Int?     @map("pullup_reps")
+  rawInput    String?  @map("raw_input")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, date])
+  @@map("workout_entries")
+}
+
+// ─── Rhythm (Ritmo / Hábitos) ─────────────────────────────────────────────────
+// Tracker define um hábito rastreável. TrackerEvent registra uma ocorrência.
+
+model Tracker {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  type      String   @default("boolean") // "boolean" | "count" | "duration"
+  target    Int?     // meta diária opcional (ex: 8 copos de água)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events TrackerEvent[]
+
+  @@index([userId])
+  @@map("trackers")
+}
+
+model TrackerEvent {
+  id        String   @id @default(cuid())
+  trackerId String   @map("tracker_id")
+  userId    String   @map("user_id")
+  date      String   // YYYY-MM-DD
+  eventType String   @default("check") @map("event_type") // "check" | "value"
+  value     Float?   // preenchido quando type = "count" ou "duration"
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tracker Tracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([trackerId, date])
+  @@index([userId, date])
+  @@map("tracker_events")
+}
+
+// ─── Reading (Leitura) ────────────────────────────────────────────────────────
+
+model Book {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  title       String
+  author      String?
+  totalPages  Int?      @map("total_pages")
+  currentPage Int?      @default(0) @map("current_page")
+  status      BookStatus @default(WANT_TO_READ)
+  startedAt   DateTime? @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions ReadingSession[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@map("books")
+}
+
+enum BookStatus {
+  WANT_TO_READ
+  READING
+  FINISHED
+  DROPPED
+}
+
+model ReadingSession {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  bookId    String   @map("book_id")
+  date      String   // YYYY-MM-DD
+  pagesRead Int      @map("pages_read")
+  fromPage  Int?     @map("from_page")
+  toPage    Int?     @map("to_page")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([bookId])
+  @@index([userId, date])
+  @@map("reading_sessions")
+}
+
+// ─── Lists (Listas) ───────────────────────────────────────────────────────────
+// ListNode é auto-referencial: parentId permite hierarquia simples (lista → item → subitem).
+// nodeType diferencia containers de folhas.
+
+model ListNode {
+  id        String       @id @default(cuid())
+  userId    String       @map("user_id")
+  parentId  String?      @map("parent_id")
+  title     String
+  content   String?
+  nodeType  ListNodeType @default(ITEM) @map("node_type")
+  position  Int          @default(0)
+  isDone    Boolean      @default(false) @map("is_done")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   ListNode?  @relation("ListNodeChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children ListNode[] @relation("ListNodeChildren")
+
+  @@index([userId])
+  @@index([userId, parentId])
+  @@map("list_nodes")
+}
+
+enum ListNodeType {
+  LIST
+  ITEM
+}
