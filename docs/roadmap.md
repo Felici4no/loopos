@@ -15,6 +15,7 @@
 - [x] **Módulo Corpo mobile funcional (registro rápido + histórico + delete)**
 - [x] **Parser local de input (10km 4x11, 5km 3x8, etc.)**
 - [x] **Tela Hoje recarrega ao voltar do módulo Corpo (useFocusEffect)**
+- [x] **Módulo Leitura mobile funcional (biblioteca + sessões + progresso + delete)**
 - [ ] Autenticação real (Supabase Auth)
 - [ ] Telas CRUD completas dos 4 módulos
 - [ ] Persistência offline-first básica
