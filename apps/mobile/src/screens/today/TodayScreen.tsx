@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { getToday, ApiError } from '../../lib/api.js';
 import type { TodayResponse } from '../../types/today.js';
 import {
@@ -199,6 +200,16 @@ export default function TodayScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Recarrega ao voltar para a aba (ex: após registrar treino em Corpo)
+  useFocusEffect(
+    useCallback(() => {
+      // Só recarrega silenciosamente se já tiver dados (evita double-load na montagem)
+      if (data !== null) {
+        void load(true);
+      }
+    }, [load, data]),
+  );
 
   if (loading) {
     return (

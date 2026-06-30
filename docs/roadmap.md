@@ -12,6 +12,9 @@
 - [x] Seed de desenvolvimento com user_test_1
 - [x] **App mobile base com navegação 5 abas**
 - [x] **Tela Hoje funcional consumindo /api/today**
+- [x] **Módulo Corpo mobile funcional (registro rápido + histórico + delete)**
+- [x] **Parser local de input (10km 4x11, 5km 3x8, etc.)**
+- [x] **Tela Hoje recarrega ao voltar do módulo Corpo (useFocusEffect)**
 - [ ] Autenticação real (Supabase Auth)
 - [ ] Telas CRUD completas dos 4 módulos
 - [ ] Persistência offline-first básica

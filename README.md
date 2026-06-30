@@ -127,13 +127,13 @@ curl -H "x-user-id: user_test_1" http://localhost:3333/api/today | jq
 
 ## Módulos do produto
 
-| Módulo   | Tela mobile    | Status       |
-|----------|----------------|--------------|
-| Hoje     | TodayScreen    | ✅ Funcional  |
-| Corpo    | BodyScreen     | 🔲 Placeholder |
-| Ritmo    | RhythmScreen   | 🔲 Placeholder |
-| Leitura  | ReadingScreen  | 🔲 Placeholder |
-| Listas   | ListsScreen    | 🔲 Placeholder |
+| Módulo   | Tela mobile    | Status         |
+|----------|----------------|----------------|
+| Hoje     | TodayScreen    | ✅ Funcional    |
+| Corpo    | BodyScreen     | ✅ Funcional    |
+| Ritmo    | RhythmScreen   | 🔲 Placeholder  |
+| Leitura  | ReadingScreen  | 🔲 Placeholder  |
+| Listas   | ListsScreen    | 🔲 Placeholder  |
 
 ---
 

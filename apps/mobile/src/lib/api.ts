@@ -10,6 +10,13 @@
  */
 
 import type { TodayResponse } from '../types/today.js';
+import type {
+  WorkoutEntry,
+  WorkoutsResponse,
+  WorkoutResponse,
+  CreateWorkoutPayload,
+  UpdateWorkoutPayload,
+} from '../types/workout.js';
 
 const BASE_URL = (process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333').replace(/\/$/, '');
 const USER_ID = process.env['EXPO_PUBLIC_USER_ID'] ?? 'user_test_1';
@@ -87,4 +94,33 @@ export async function getToday(date?: string): Promise<TodayResponse> {
   const qs = date ? `?date=${date}` : '';
   const result = await apiGet<TodayResponse>(`/api/today${qs}`);
   return result;
+}
+
+// ─── Body / Workouts ─────────────────────────────────────────────────────────
+
+/** Lista treinos. Filtra por data se fornecida (YYYY-MM-DD). */
+export async function getWorkouts(date?: string): Promise<WorkoutEntry[]> {
+  const qs = date ? `?date=${date}` : '';
+  const result = await apiGet<WorkoutsResponse>(`/api/body/workouts${qs}`);
+  return result.data;
+}
+
+/** Cria um treino. Retorna o registro criado. */
+export async function createWorkout(payload: CreateWorkoutPayload): Promise<WorkoutEntry> {
+  const result = await apiPost<WorkoutResponse>('/api/body/workouts', payload);
+  return result.data;
+}
+
+/** Atualiza campos de um treino. Retorna o registro atualizado. */
+export async function updateWorkout(
+  id: string,
+  payload: UpdateWorkoutPayload,
+): Promise<WorkoutEntry> {
+  const result = await apiPatch<WorkoutResponse>(`/api/body/workouts/${id}`, payload);
+  return result.data;
+}
+
+/** Remove um treino. Retorna void (204). */
+export async function deleteWorkout(id: string): Promise<void> {
+  await apiDelete(`/api/body/workouts/${id}`);
 }

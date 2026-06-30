@@ -101,16 +101,19 @@ Todos os handlers filtram por `userId` em cada query. Um `DELETE /api/body/worko
 
 ```
 apps/mobile/src/
-├─ lib/api.ts              ← cliente HTTP (fetch + x-user-id + error handling)
-├─ types/today.ts          ← tipos da resposta /api/today
-├─ components/ui.tsx       ← Screen, Card, SectionTitle, Empty/Loading/ErrorState
-├─ navigation/Navigation   ← Bottom tab com 5 abas
+├─ lib/api.ts               ← cliente HTTP: getToday, getWorkouts, createWorkout, deleteWorkout…
+├─ lib/parseWorkoutInput.ts ← parser local: "10km 4x11" → { runKm, pullupSets, pullupReps }
+│                              temporário no mobile — pode migrar para @loopos/shared
+├─ types/today.ts           ← tipos da resposta /api/today
+├─ types/workout.ts         ← WorkoutEntry, CreateWorkoutPayload, UpdateWorkoutPayload
+├─ components/ui.tsx        ← Screen, Card, SectionTitle, Empty/Loading/ErrorState
+├─ navigation/Navigation    ← Bottom tab com 5 abas
 └─ screens/
-   ├─ today/TodayScreen    ← chama getToday(), renderiza cards por módulo
-   ├─ body/BodyScreen       ← placeholder
-   ├─ rhythm/RhythmScreen   ← placeholder
-   ├─ reading/ReadingScreen ← placeholder
-   └─ lists/ListsScreen     ← placeholder
+   ├─ today/TodayScreen     ← getToday() + useFocusEffect (refresh ao voltar de Corpo)
+   ├─ body/BodyScreen        ← FUNCIONAL: input rápido + parse + POST + lista + delete
+   ├─ rhythm/RhythmScreen    ← placeholder
+   ├─ reading/ReadingScreen  ← placeholder
+   └─ lists/ListsScreen      ← placeholder
 ```
 
 **Configuração da URL da API:**
