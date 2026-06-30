@@ -39,6 +39,13 @@ import type {
   UpdateTrackerPayload,
   CreateTrackerEventPayload,
 } from '../types/rhythm.js';
+import type {
+  ListNode,
+  ListNodeResponse,
+  ListNodesResponse,
+  CreateListNodePayload,
+  UpdateListNodePayload,
+} from '../types/lists.js';
 
 const BASE_URL = (process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333').replace(/\/$/, '');
 const USER_ID = process.env['EXPO_PUBLIC_USER_ID'] ?? 'user_test_1';
@@ -227,4 +234,38 @@ export async function createTrackerEvent(
 
 export async function deleteTrackerEvent(id: string): Promise<void> {
   await apiDelete(`/api/rhythm/events/${id}`);
+}
+
+// ─── Lists / Nodes ────────────────────────────────────────────────────────────
+
+/**
+ * Lista nós filhos de um parentId. Sem parentId (ou null) → retorna raízes.
+ */
+export async function getListNodes(parentId?: string | null): Promise<ListNode[]> {
+  const qs = parentId ? `?parentId=${parentId}` : '';
+  const result = await apiGet<ListNodesResponse>(`/api/lists/nodes${qs}`);
+  return result.data;
+}
+
+/** Busca um nó com seus filhos diretos incluídos. */
+export async function getListNode(id: string): Promise<ListNode> {
+  const result = await apiGet<ListNodeResponse>(`/api/lists/nodes/${id}`);
+  return result.data;
+}
+
+/** Cria um nó (lista raiz se parentId omitido, item se fornecido). */
+export async function createListNode(payload: CreateListNodePayload): Promise<ListNode> {
+  const result = await apiPost<ListNodeResponse>('/api/lists/nodes', payload);
+  return result.data;
+}
+
+/** Atualiza título, conteúdo, posição ou isDone. Não altera parentId/nodeType. */
+export async function updateListNode(id: string, payload: UpdateListNodePayload): Promise<ListNode> {
+  const result = await apiPatch<ListNodeResponse>(`/api/lists/nodes/${id}`, payload);
+  return result.data;
+}
+
+/** Remove um nó. Cascade no banco apaga todos os filhos automaticamente. */
+export async function deleteListNode(id: string): Promise<void> {
+  await apiDelete(`/api/lists/nodes/${id}`);
 }

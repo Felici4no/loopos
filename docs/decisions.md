@@ -228,3 +228,23 @@ Formato: data, decisão, motivação, alternativas consideradas.
 - Unique constraint `(tracker_id, user_id, date)` no banco (evita dups em multi-device).
 - Streak no server para resumos automáticos (v0.5).
 - Filtro de trackers arquivados (`isActive: false`) na tela — atualmente só exibe ativos.
+
+---
+
+## ADR-016 — Módulo Listas: UI limitada a 2 níveis, drill-down sem stack navigator
+**Data:** 2025-06 (Etapa mobile — Listas)
+**Status:** Aceita
+
+**Decisão:** O módulo Listas no mobile v0.1 expõe apenas 2 níveis de profundidade visual: lista raiz → item → subitem (subitem só aparece expandido, sem permitir um terceiro nível na interface).
+
+1. **`nodeType` é enum Prisma real**, não string livre: `enum ListNodeType { LIST, ITEM }`. Diferente de `Tracker.type`, que é string sem enum. Confirmado lendo o schema antes de implementar — `LIST` para raízes (`parentId: null`), `ITEM` para tudo abaixo (incluindo subitens).
+
+2. **Drill-down via estado local, sem stack navigator:** A tela usa `selectedList: ListNode | null` para alternar entre "lista de raízes" e "detalhe da lista". Subitens usam `expandedId` + cache local (`childrenCache`) para expansão inline, sem nova tela. Decisão pragmática: evita adicionar `@react-navigation/native-stack` só para isso.
+
+3. **Banco suporta recursividade ilimitada, interface não.** `ListNode.parentId` é self-reference sem limite de profundidade no schema. A UI do MVP trava em 2 níveis deliberadamente — árvore visual infinita é complexidade desproporcional ao valor para o v0.1. Se o uso real mostrar necessidade de mais níveis, reavaliar com navegação dedicada (stack) em vez de expansão inline.
+
+4. **Cascade delete confirmado no backend:** `onDelete: Cascade` na relação self-referencial `ListNodeChildren`. Excluir uma lista raiz remove todos os itens e subitens automaticamente — a confirmação no app avisa isso ao usuário antes do delete.
+
+5. **Fora do escopo, documentado para não ser esquecido:** drag-and-drop, ordenação manual (position é setado mas não editável via UI), busca, tags, filtros, colaboração, anexos, editor rico de texto.
+
+**Status do v0.1:** Com Listas funcional, os 5 módulos centrais do LoopOS (Hoje, Corpo, Ritmo, Leitura, Listas) estão implementados no mobile e validados ponta a ponta (mobile → API → banco → Hoje). O critério de aceite do v0.1 — uso contínuo por 7 dias — pode agora ser testado com dados reais.

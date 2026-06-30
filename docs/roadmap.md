@@ -17,7 +17,9 @@
 - [x] **Tela Hoje recarrega ao voltar do módulo Corpo (useFocusEffect)**
 - [x] **Módulo Leitura mobile funcional (biblioteca + sessões + progresso + delete)**
 - [x] **Módulo Ritmo mobile funcional (trackers + eventos + streak + anti-dup)**
-- [ ] Módulo Listas mobile funcional
+- [x] **Módulo Listas mobile funcional (raiz → item → subitem, 2 níveis)**
+- [x] **Todos os 5 módulos mobile funcionais — pronto para validar 7 dias de uso**
+- [ ] Autenticação real (Supabase Auth)
 - [ ] Telas CRUD completas dos 4 módulos
 - [ ] Persistência offline-first básica
 

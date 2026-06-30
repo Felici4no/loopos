@@ -133,7 +133,9 @@ curl -H "x-user-id: user_test_1" http://localhost:3333/api/today | jq
 | Corpo    | BodyScreen     | ✅ Funcional    |
 | Ritmo    | RhythmScreen   | ✅ Funcional    |
 | Leitura  | ReadingScreen  | ✅ Funcional    |
-| Listas   | ListsScreen    | 🔲 Placeholder  |
+| Listas   | ListsScreen    | ✅ Funcional    |
+
+Todos os 5 módulos do v0.1 estão funcionais. Próximo passo: validar 7 dias de uso real.
 
 ---
 
