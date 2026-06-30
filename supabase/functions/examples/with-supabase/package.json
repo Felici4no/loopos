@@ -1,0 +1,8 @@
+{
+  "name": "loopos-supabase-functions-example",
+  "private": true,
+  "description": "Exemplo isolado, não faz parte do monorepo pnpm. @supabase/server vive só aqui, nunca em apps/mobile.",
+  "dependencies": {
+    "@supabase/server": "latest"
+  }
+}

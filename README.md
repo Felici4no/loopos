@@ -210,4 +210,5 @@ O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **is
 - [`docs/android-build.md`](docs/android-build.md) — Como rodar no Expo Go e gerar APK de preview
 - [`docs/local-visual-run.md`](docs/local-visual-run.md) — Passo a passo para rodar banco, API e mobile localmente
 - [`docs/supabase-direct-mode.md`](docs/supabase-direct-mode.md) — Modo simplificado: mobile → Supabase direto
+- [`docs/supabase-server-sdk.md`](docs/supabase-server-sdk.md) — Preparação futura: `@supabase/server` para auth real e RLS (ainda não ativo)
 - [`docs/visual-checklist.md`](docs/visual-checklist.md) — Checklist de validação visual módulo a módulo
