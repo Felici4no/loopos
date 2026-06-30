@@ -4,6 +4,8 @@ Sistema pessoal modular para registrar rotina, corpo, leitura, hábitos e listas
 
 > **v0.1 goal:** Provar que o usuário consegue usar o app por 7 dias consecutivos sem abandonar.
 
+> 🔒 **Status atual:** v0.1 em validação real de 7 dias. Novas features estão congeladas até o fim do teste. Ver [`docs/validation-7-days.md`](docs/validation-7-days.md).
+
 ---
 
 ## Stack
