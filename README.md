@@ -5,6 +5,8 @@ Sistema pessoal modular para registrar rotina, corpo, leitura, hábitos e listas
 > **v0.1 goal:** Provar que o usuário consegue usar o app por 7 dias consecutivos sem abandonar.
 
 > 🔒 **Status atual:** v0.1 em validação real de 7 dias. Novas features estão congeladas até o fim do teste. Ver [`docs/validation-7-days.md`](docs/validation-7-days.md).
+>
+> 🔌 **Modo de dados atual:** Mobile → Supabase direto (sem backend Express rodando). Temporário, só para validação visual. Ver [`docs/supabase-direct-mode.md`](docs/supabase-direct-mode.md).
 
 ---
 
@@ -207,4 +209,5 @@ O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **is
 - [`docs/mvp-checklist.md`](docs/mvp-checklist.md) — Checklist técnico de fechamento do v0.1
 - [`docs/android-build.md`](docs/android-build.md) — Como rodar no Expo Go e gerar APK de preview
 - [`docs/local-visual-run.md`](docs/local-visual-run.md) — Passo a passo para rodar banco, API e mobile localmente
+- [`docs/supabase-direct-mode.md`](docs/supabase-direct-mode.md) — Modo simplificado: mobile → Supabase direto
 - [`docs/visual-checklist.md`](docs/visual-checklist.md) — Checklist de validação visual módulo a módulo

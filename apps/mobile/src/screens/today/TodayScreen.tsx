@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getToday, ApiError } from '../../lib/api.js';
+import { getToday, DataError as ApiError } from '../../lib/data.js';
 import type { TodayResponse } from '../../types/today.js';
 import {
   Card,
@@ -187,7 +187,7 @@ export default function TodayScreen() {
       setData(result);
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(`Erro ${err.status}: ${err.message}`);
+        setError(err.message);
       } else {
         setError('Não foi possível conectar à API. Verifique se o servidor está rodando.');
       }

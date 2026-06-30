@@ -20,7 +20,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getWorkouts, createWorkout, deleteWorkout, ApiError } from '../../lib/api.js';
+import { getWorkouts, createWorkout, deleteWorkout, DataError as ApiError } from '../../lib/data.js';
 import { parseWorkoutInput, formatParsedWorkout } from '../../lib/parseWorkoutInput.js';
 import type { WorkoutEntry } from '../../types/workout.js';
 import { colors } from '../../components/ui.js';
@@ -145,7 +145,7 @@ export default function BodyScreen() {
       setWorkouts(data);
     } catch (err) {
       const msg = err instanceof ApiError
-        ? `Erro ${err.status}: ${err.message}`
+        ? err.message
         : 'Não foi possível carregar os treinos.';
       setError(msg);
     } finally {

@@ -29,8 +29,8 @@ import {
   createListNode,
   updateListNode,
   deleteListNode,
-  ApiError,
-} from '../../lib/api.js';
+  DataError as ApiError,
+} from '../../lib/data.js';
 import type { ListNode } from '../../types/lists.js';
 import { colors } from '../../components/ui.js';
 
@@ -410,7 +410,7 @@ export default function ListsScreen() {
       setRoots(data);
     } catch (err) {
       setError(err instanceof ApiError
-        ? `Erro ${err.status}: ${err.message}`
+        ? err.message
         : 'Não foi possível carregar as listas.');
     } finally {
       setLoading(false);

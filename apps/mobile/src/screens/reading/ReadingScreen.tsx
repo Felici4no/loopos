@@ -27,8 +27,8 @@ import {
   createBook,
   deleteBook,
   createReadingSession,
-  ApiError,
-} from '../../lib/api.js';
+  DataError as ApiError,
+} from '../../lib/data.js';
 import {
   calculateReadingProgress,
   formatReadingProgress,
@@ -453,7 +453,7 @@ export default function ReadingScreen() {
       setBooks(data);
     } catch (err) {
       setError(err instanceof ApiError
-        ? `Erro ${err.status}: ${err.message}`
+        ? err.message
         : 'Não foi possível carregar os livros.');
     } finally {
       setLoading(false);

@@ -31,8 +31,8 @@ import {
   deleteTracker,
   getTrackerEvents,
   createTrackerEvent,
-  ApiError,
-} from '../../lib/api.js';
+  DataError as ApiError,
+} from '../../lib/data.js';
 import {
   hasEventToday,
   calculateCurrentStreak,
@@ -371,7 +371,7 @@ export default function RhythmScreen() {
       setEvents(e);
     } catch (err) {
       setError(err instanceof ApiError
-        ? `Erro ${err.status}: ${err.message}`
+        ? err.message
         : 'Não foi possível carregar os trackers.');
     } finally {
       setLoading(false);
