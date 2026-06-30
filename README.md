@@ -131,7 +131,7 @@ curl -H "x-user-id: user_test_1" http://localhost:3333/api/today | jq
 |----------|----------------|----------------|
 | Hoje     | TodayScreen    | ✅ Funcional    |
 | Corpo    | BodyScreen     | ✅ Funcional    |
-| Ritmo    | RhythmScreen   | 🔲 Placeholder  |
+| Ritmo    | RhythmScreen   | ✅ Funcional    |
 | Leitura  | ReadingScreen  | ✅ Funcional    |
 | Listas   | ListsScreen    | 🔲 Placeholder  |
 

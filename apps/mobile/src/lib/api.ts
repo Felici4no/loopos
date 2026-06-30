@@ -28,6 +28,17 @@ import type {
   UpdateBookPayload,
   CreateReadingSessionPayload,
 } from '../types/reading.js';
+import type {
+  Tracker,
+  TrackerEvent,
+  TrackerResponse,
+  TrackersResponse,
+  TrackerEventResponse,
+  TrackerEventsResponse,
+  CreateTrackerPayload,
+  UpdateTrackerPayload,
+  CreateTrackerEventPayload,
+} from '../types/rhythm.js';
 
 const BASE_URL = (process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333').replace(/\/$/, '');
 const USER_ID = process.env['EXPO_PUBLIC_USER_ID'] ?? 'user_test_1';
@@ -170,4 +181,50 @@ export async function createReadingSession(
 
 export async function deleteReadingSession(id: string): Promise<void> {
   await apiDelete(`/api/reading/sessions/${id}`);
+}
+
+// ─── Rhythm / Trackers ────────────────────────────────────────────────────────
+
+export async function getTrackers(): Promise<Tracker[]> {
+  const result = await apiGet<TrackersResponse>('/api/rhythm/trackers');
+  return result.data;
+}
+
+export async function createTracker(payload: CreateTrackerPayload): Promise<Tracker> {
+  const result = await apiPost<TrackerResponse>('/api/rhythm/trackers', payload);
+  return result.data;
+}
+
+export async function updateTracker(id: string, payload: UpdateTrackerPayload): Promise<Tracker> {
+  const result = await apiPatch<TrackerResponse>(`/api/rhythm/trackers/${id}`, payload);
+  return result.data;
+}
+
+export async function deleteTracker(id: string): Promise<void> {
+  await apiDelete(`/api/rhythm/trackers/${id}`);
+}
+
+// ─── Rhythm / Events ─────────────────────────────────────────────────────────
+
+export async function getTrackerEvents(params?: {
+  date?: string;
+  trackerId?: string;
+}): Promise<TrackerEvent[]> {
+  const qs = new URLSearchParams();
+  if (params?.date) qs.set('date', params.date);
+  if (params?.trackerId) qs.set('trackerId', params.trackerId);
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  const result = await apiGet<TrackerEventsResponse>(`/api/rhythm/events${query}`);
+  return result.data;
+}
+
+export async function createTrackerEvent(
+  payload: CreateTrackerEventPayload,
+): Promise<TrackerEvent> {
+  const result = await apiPost<TrackerEventResponse>('/api/rhythm/events', payload);
+  return result.data;
+}
+
+export async function deleteTrackerEvent(id: string): Promise<void> {
+  await apiDelete(`/api/rhythm/events/${id}`);
 }

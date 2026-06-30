@@ -205,3 +205,26 @@ Formato: data, decisão, motivação, alternativas consideradas.
 - Erros: `{ "error": { "message": "...", "code": "..." } }` com status adequado
 
 **Motivação:** Envelope `{ "data" }` facilita extensão futura (adicionar `meta`, `pagination`, `links`) sem quebrar clientes. DELETE retorna 204 em vez de `{ success: true }` — semântica HTTP padrão, sem body desnecessário. Erros com `code` string permitem que o cliente mobile trate erros por tipo sem depender de mensagem localizada.
+
+---
+
+## ADR-015 — Módulo Ritmo: registro diário simples, streak local, anti-dup no cliente
+**Data:** 2025-06 (Etapa mobile — Ritmo)
+**Status:** Aceita / Temporária
+
+**Decisão:** O módulo Ritmo no mobile v0.1 é implementado como registro diário simples:
+
+1. **Tracker.type como string, não enum Prisma:** `'boolean' | 'count' | 'duration'`. Definido no schema como `String @default("boolean")` e validado pelo Zod no server. No mobile, `TrackerType` é um union type TypeScript alinhado com esses valores.
+
+2. **TrackerEvent.eventType como string:** `'check' | 'value'`. Mesmo padrão.
+
+3. **Streak calculado localmente no mobile:** A função `calculateCurrentStreak()` em `rhythmStats.ts` recebe os eventos já carregados e computa a sequência sem chamada extra à API. Decisão pragmática: evita endpoint dedicado no server. Migrável para o server quando houver resumos automáticos (v0.5).
+
+4. **Anti-duplicidade diária no cliente:** `hasEventToday()` verifica os eventos em memória antes de `createTrackerEvent()`. Se já existir evento do mesmo tracker na data atual, a criação é bloqueada com feedback visual. **Esta regra DEVE ser reforçada no backend** com uma unique constraint `(tracker_id, user_id, date)` em etapa futura — a verificação no cliente não é suficiente para ambientes com múltiplos dispositivos.
+
+5. **Trackers count/duration pedem valor numérico via modal:** Ao tocar em "Registrar hoje" em um tracker de tipo `count` ou `duration`, um modal leve pede o valor antes de salvar com `eventType: 'value'`. Trackers `boolean` registram diretamente com `eventType: 'check'`.
+
+**Pendências documentadas:**
+- Unique constraint `(tracker_id, user_id, date)` no banco (evita dups em multi-device).
+- Streak no server para resumos automáticos (v0.5).
+- Filtro de trackers arquivados (`isActive: false`) na tela — atualmente só exibe ativos.
