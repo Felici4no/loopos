@@ -3,6 +3,7 @@ import type { ExpoConfig } from 'expo/config';
 const config: ExpoConfig = {
   name: 'LoopOS',
   slug: 'loopos',
+  owner: 'felici4nos-team',
   version: '0.1.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -32,7 +33,7 @@ const config: ExpoConfig = {
   // Sem segredo aqui — projectId é um identificador público, não uma credencial.
   extra: {
     eas: {
-      projectId: undefined, // preenchido por `eas init` / primeiro `eas build`
+      projectId: 'bd16c8c9-5240-46d1-b0fe-20aa0c6fe635',
     },
   },
 };

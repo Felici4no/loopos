@@ -36,6 +36,8 @@ Thumbs.db
 # Expo
 .expo/
 apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
 
 # Logs
 *.log
