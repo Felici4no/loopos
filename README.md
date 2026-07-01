@@ -199,6 +199,7 @@ O app usa `x-user-id: user_test_1` fixo como autenticação temporária — **is
 
 ## Documentação
 
+- [`docs/project-summary.md`](docs/project-summary.md) — Resumo do estado atual e melhorias propostas
 - [`docs/product.md`](docs/product.md) — Visão do produto e módulos
 - [`docs/architecture.md`](docs/architecture.md) — Arquitetura, fluxos e decisões
 - [`docs/database.md`](docs/database.md) — Modelos Prisma implementados
