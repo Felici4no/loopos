@@ -5,7 +5,9 @@
  * Esta página existe apenas para validar a estrutura Next.js.
  */
 
-export default function HomePage() {
+import type { ReactElement } from 'react';
+
+export default function HomePage(): ReactElement {
   return (
     <main
       style={{

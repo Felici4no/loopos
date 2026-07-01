@@ -225,7 +225,7 @@ export default function TodayScreen() {
       <SafeAreaView style={styles.screen} edges={['top']}>
         <ErrorState
           message={error}
-          hint={`API: ${process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'}`}
+          hint="Dados locais do aparelho (AsyncStorage)"
           onRetry={() => void load()}
         />
       </SafeAreaView>
