@@ -23,10 +23,24 @@ import {
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
+function parseISODate(iso: string): Date {
   const [year, month, day] = iso.split('-').map(Number);
-  const d = new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
-  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
+}
+
+function weekdayOf(iso: string): string {
+  return parseISODate(iso).toLocaleDateString('pt-BR', { weekday: 'long' });
+}
+
+function dayOf(iso: string): string {
+  return String(parseISODate(iso).getDate()).padStart(2, '0');
+}
+
+function monthOf(iso: string): string {
+  return parseISODate(iso)
+    .toLocaleDateString('pt-BR', { month: 'short' })
+    .replace('.', '')
+    .toUpperCase();
 }
 
 // ─── Sub-cards ────────────────────────────────────────────────────────────────
@@ -254,13 +268,21 @@ export default function TodayScreen() {
           />
         }
       >
-        {/* Header */}
+        {/* Header — a data é peça central: badge de vidro com dia + mês */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>Hoje</Text>
+          <View style={styles.headerLeft}>
             {data && (
-              <Text style={styles.headerDate}>{formatDate(data.date)}</Text>
+              <View style={styles.dateBadge}>
+                <Text style={styles.dateBadgeDay}>{dayOf(data.date)}</Text>
+                <Text style={styles.dateBadgeMonth}>{monthOf(data.date)}</Text>
+              </View>
             )}
+            <View>
+              <Text style={styles.headerTitle}>Hoje</Text>
+              {data && (
+                <Text style={styles.headerDate}>{weekdayOf(data.date)}</Text>
+              )}
+            </View>
           </View>
           <TouchableOpacity
             onPress={() => {
@@ -318,7 +340,36 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dateBadge: {
+    backgroundColor: colors.surfaceGlass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    minWidth: 56,
+  },
+  dateBadgeDay: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.5,
+    lineHeight: 26,
+  },
+  dateBadgeMonth: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 1.5,
+    marginTop: 1,
   },
   resetBtn: {
     backgroundColor: colors.surfaceGlass,
@@ -340,7 +391,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   headerDate: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textSecondary,
     marginTop: 2,
     textTransform: 'capitalize',

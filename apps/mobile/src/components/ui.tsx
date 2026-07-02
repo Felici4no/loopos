@@ -5,7 +5,7 @@
  * Design: fundo escuro #0a0a0a, cards #141414, texto branco.
  */
 
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,12 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   StyleSheet,
+  Animated,
   type ViewStyle,
   type TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,8 @@ export const colors = {
   surfaceGlass: 'rgba(255, 255, 255, 0.055)',
   borderGlass: 'rgba(255, 255, 255, 0.10)',
   tabBarGlass: 'rgba(10, 10, 10, 0.55)',
+  accentGlass: 'rgba(167, 139, 250, 0.14)',
+  accentGlassBorder: 'rgba(167, 139, 250, 0.18)',
   text: '#ffffff',
   textSecondary: '#888888',
   textMuted: '#444444',
@@ -56,6 +60,47 @@ export function Screen({ children, style }: ScreenProps) {
         {children}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// ─── FadeOnFocus ──────────────────────────────────────────────────────────────
+
+interface FadeOnFocusProps {
+  children: React.ReactNode;
+  style?: ViewStyle;
+}
+
+/**
+ * Transição suave de entrada quando a tela ganha foco na navegação:
+ * leve fade + deslize vertical. Evita a troca "seca" entre abas.
+ */
+export function FadeOnFocus({ children, style }: FadeOnFocusProps) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      opacity.setValue(0);
+      translateY.setValue(10);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, [opacity, translateY]),
+  );
+
+  return (
+    <Animated.View style={[{ flex: 1, opacity, transform: [{ translateY }] }, style]}>
+      {children}
+    </Animated.View>
   );
 }
 
