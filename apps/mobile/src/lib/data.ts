@@ -265,21 +265,32 @@ export async function createReadingSession(
   };
   db.readingSessions.push(session);
 
-  // Atualizar currentPage do livro
-  if (payload.toPage !== undefined && payload.toPage !== null) {
-    const bookIdx = db.books.findIndex((b) => b.id === payload.bookId);
-    if (bookIdx !== -1) {
-      const book = db.books[bookIdx]!;
-      const newPage = Math.max(book.currentPage ?? 0, payload.toPage);
-      const finished = book.totalPages !== null && newPage >= book.totalPages;
-      db.books[bookIdx] = {
-        ...book,
-        currentPage: newPage,
-        status: finished ? 'FINISHED' : book.status,
-        finishedAt: finished && !book.finishedAt ? now : book.finishedAt,
-        updatedAt: now,
-      };
-    }
+  // Atualizar o livro: currentPage avança com toPage (posição exata) ou,
+  // sem toPage, soma pagesRead. Primeira sessão tira o livro de
+  // WANT_TO_READ; atingir totalPages finaliza (FINISHED + finishedAt).
+  const bookIdx = db.books.findIndex((b) => b.id === payload.bookId);
+  if (bookIdx !== -1) {
+    const book = db.books[bookIdx]!;
+    const base = book.currentPage ?? 0;
+    const advanced =
+      payload.toPage !== undefined && payload.toPage !== null
+        ? Math.max(base, payload.toPage)
+        : base + payload.pagesRead;
+    const newPage =
+      book.totalPages !== null ? Math.min(advanced, book.totalPages) : advanced;
+    const finished = book.totalPages !== null && advanced >= book.totalPages;
+    db.books[bookIdx] = {
+      ...book,
+      currentPage: newPage,
+      status: finished
+        ? 'FINISHED'
+        : book.status === 'WANT_TO_READ'
+          ? 'READING'
+          : book.status,
+      startedAt: book.startedAt ?? now,
+      finishedAt: finished && !book.finishedAt ? now : book.finishedAt,
+      updatedAt: now,
+    };
   }
 
   await saveDb(db);

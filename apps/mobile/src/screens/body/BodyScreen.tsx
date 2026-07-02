@@ -22,8 +22,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getWorkouts, createWorkout, deleteWorkout, DataError as ApiError } from '../../lib/data.js';
 import { parseWorkoutInput, formatParsedWorkout } from '../../lib/parseWorkoutInput.js';
+import {
+  getWeeklyWorkoutSummary,
+  getWeeklyRunKmSeries,
+  getWeeklyPullupSeries,
+  getWorkoutSuccessMessage,
+  formatKm,
+} from '../../lib/insights.js';
 import type { WorkoutEntry } from '../../types/workout.js';
 import { colors } from '../../components/ui.js';
+import { WeekBars, TrendLine } from '../../components/viz.js';
+import { SuccessBanner } from '../../components/SuccessBanner.js';
 import { todayISO } from '@loopos/shared';
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -116,6 +125,63 @@ function WorkoutCard({ item, onDelete, deleting }: WorkoutCardProps) {
   );
 }
 
+// ─── WeeklySummary — resumo visual dos últimos 7 dias ────────────────────────
+
+function WeeklySummary({ workouts, today }: { workouts: WorkoutEntry[]; today: string }) {
+  const summary = getWeeklyWorkoutSummary(workouts, today);
+  const reps = getWeeklyPullupSeries(workouts, today);
+  const km = getWeeklyRunKmSeries(workouts, today);
+
+  if (summary.workoutDays === 0) return null;
+
+  return (
+    <View style={styles.summaryCard}>
+      <Text style={styles.summaryLabel}>ÚLTIMOS 7 DIAS</Text>
+
+      {/* Stats principais */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCol}>
+          <Text style={styles.statValue}>{formatKm(summary.totalKm)}</Text>
+          <Text style={styles.statUnit}>km na semana</Text>
+        </View>
+        <View style={styles.statCol}>
+          <Text style={styles.statValue}>{summary.avgRepsPerDay}</Text>
+          <Text style={styles.statUnit}>reps/dia (média)</Text>
+        </View>
+        <View style={styles.statCol}>
+          <Text style={styles.statValue}>{summary.workoutDays}</Text>
+          <Text style={styles.statUnit}>
+            dia{summary.workoutDays === 1 ? '' : 's'} com treino
+          </Text>
+        </View>
+      </View>
+
+      {/* Mini charts */}
+      {summary.totalReps > 0 && (
+        <View style={styles.chartBlock}>
+          <View style={styles.chartHeader}>
+            <Text style={styles.chartLabel}>REPETIÇÕES</Text>
+          </View>
+          <WeekBars data={reps} height={40} />
+        </View>
+      )}
+      {summary.totalKm > 0 && (
+        <View style={styles.chartBlock}>
+          <View style={styles.chartHeader}>
+            <Text style={styles.chartLabel}>KM POR DIA</Text>
+            {summary.bestRun && (
+              <Text style={styles.chartMeta}>
+                melhor: {formatKm(summary.bestRun.km)} km
+              </Text>
+            )}
+          </View>
+          <TrendLine data={km} height={48} formatValue={formatKm} />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── BodyScreen ───────────────────────────────────────────────────────────────
 
 export default function BodyScreen() {
@@ -183,10 +249,7 @@ export default function BodyScreen() {
       // Prepend: treino mais recente no topo
       setWorkouts((prev) => [created, ...prev]);
       setInput('');
-      setLastSaved(created.rawInput ?? 'treino registrado');
-
-      // Limpa feedback após 3s
-      setTimeout(() => setLastSaved(null), 3000);
+      setLastSaved(getWorkoutSuccessMessage(created));
     } catch (err) {
       const msg = err instanceof ApiError
         ? `Erro ao salvar: ${err.message}`
@@ -261,10 +324,6 @@ export default function BodyScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Feedback de salvamento */}
-          {lastSaved && (
-            <Text style={styles.savedFeedback}>✓ "{lastSaved}" registrado</Text>
-          )}
           {saveError && (
             <Text style={styles.saveErrorText}>{saveError}</Text>
           )}
@@ -310,6 +369,9 @@ export default function BodyScreen() {
             }
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              <WeeklySummary workouts={workouts} today={todayStr} />
+            }
             renderItem={({ item }) => {
               if ('_section' in item) {
                 return (
@@ -339,6 +401,9 @@ export default function BodyScreen() {
           />
         )}
       </KeyboardAvoidingView>
+
+      {/* Feedback de sucesso */}
+      <SuccessBanner message={lastSaved} onHide={() => setLastSaved(null)} />
     </SafeAreaView>
   );
 }
@@ -407,14 +472,65 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  savedFeedback: {
-    fontSize: 13,
-    color: colors.success,
-    fontWeight: '500',
-  },
   saveErrorText: {
     fontSize: 13,
     color: colors.error,
+  },
+
+  // Resumo semanal
+  summaryCard: {
+    backgroundColor: colors.surfaceGlass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderRadius: 16,
+    padding: 16,
+    gap: 14,
+    marginBottom: 6,
+  },
+  summaryLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 1,
+    color: colors.textMuted,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statCol: {
+    flex: 1,
+    gap: 2,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  statUnit: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  chartBlock: {
+    gap: 8,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  chartLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 1,
+    color: colors.textMuted,
+  },
+  chartMeta: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
 
   // List
@@ -456,11 +572,11 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    backgroundColor: colors.surfaceGlass,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderGlass,
     gap: 8,
   },
   cardHeader: {

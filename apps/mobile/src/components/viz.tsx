@@ -126,52 +126,111 @@ export function WeekBars({ data, height = 56 }: WeekBarsProps) {
 interface TrendLineProps {
   data: DayPoint[];
   height?: number;
+  /** Formata os valores do eixo/último ponto (ex.: km). */
+  formatValue?: (v: number) => string;
 }
 
-/** Linha de tendência SVG com área sutil — km por dia, estilo Fitness. */
-export function TrendLine({ data, height = 56 }: TrendLineProps) {
+/**
+ * Linha de tendência SVG com área sutil — km por dia, estilo Fitness.
+ * Eixo Y discreto (máx/0) à esquerda e valor sobre o último ponto com dado.
+ */
+export function TrendLine({
+  data,
+  height = 56,
+  formatValue = (v) => String(v),
+}: TrendLineProps) {
   const width = 100; // viewBox relativo; estica para a largura do card
   const max = Math.max(...data.map((d) => d.value), 1);
   const stepX = data.length > 1 ? width / (data.length - 1) : width;
-  const padY = 6;
+  const padY = 8;
 
   const points = data.map((d, i) => ({
     x: i * stepX,
     y: height - padY - (d.value / max) * (height - padY * 2),
     zero: d.value === 0,
+    value: d.value,
   }));
 
   const polyline = points.map((p) => `${p.x},${p.y}`).join(' ');
   const area = `0,${height} ${polyline} ${width},${height}`;
-  const last = points[points.length - 1];
+  // Último ponto com registro (para rotular o valor)
+  const lastWithData = [...points].reverse().find((p) => !p.zero) ?? null;
+  const topY = padY;
+  const baseY = height - padY;
 
   return (
-    <View>
-      <Svg
-        width="100%"
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-      >
-        <Polygon points={area} fill="rgba(167, 139, 250, 0.10)" />
-        <Polyline
-          points={polyline}
-          fill="none"
-          stroke={colors.accent}
-          strokeWidth={1.6}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {last && !last.zero && (
-          <Circle cx={last.x} cy={last.y} r={2.6} fill={colors.accent} />
+    <View style={vizStyles.trendRow}>
+      {/* Eixo Y: máx e 0, discretos */}
+      <View style={[vizStyles.axisCol, { height }]}>
+        <Text style={vizStyles.axisLabel}>{formatValue(max)}</Text>
+        <Text style={vizStyles.axisLabel}>0</Text>
+      </View>
+
+      <View style={vizStyles.trendChart}>
+        <Svg
+          width="100%"
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+        >
+          {/* Guias horizontais sutis (topo = máx, base = 0) */}
+          <Polyline
+            points={`0,${topY} ${width},${topY}`}
+            stroke="rgba(255, 255, 255, 0.06)"
+            strokeWidth={0.8}
+          />
+          <Polyline
+            points={`0,${baseY} ${width},${baseY}`}
+            stroke="rgba(255, 255, 255, 0.10)"
+            strokeWidth={0.8}
+          />
+          <Polygon points={area} fill="rgba(167, 139, 250, 0.10)" />
+          <Polyline
+            points={polyline}
+            fill="none"
+            stroke={colors.accent}
+            strokeWidth={1.6}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          {points.map(
+            (p, i) =>
+              !p.zero && (
+                <Circle
+                  key={i}
+                  cx={p.x}
+                  cy={p.y}
+                  r={i === points.length - 1 ? 2.8 : 1.8}
+                  fill={colors.accent}
+                />
+              ),
+          )}
+        </Svg>
+
+        {/* Valor sobre o último ponto com dado (coordenada Y não é esticada) */}
+        {lastWithData && (
+          <View
+            style={[
+              vizStyles.pointValueWrap,
+              {
+                top: Math.max(lastWithData.y - 16, 0),
+                left: `${Math.min((lastWithData.x / width) * 100, 88)}%`,
+              },
+            ]}
+          >
+            <Text style={vizStyles.pointValue}>
+              {formatValue(lastWithData.value)}
+            </Text>
+          </View>
         )}
-      </Svg>
-      <View style={vizStyles.lineLabels}>
-        {data.map((d, i) => (
-          <Text key={`${d.label}-${i}`} style={vizStyles.barLabel}>
-            {d.label}
-          </Text>
-        ))}
+
+        <View style={vizStyles.lineLabels}>
+          {data.map((d, i) => (
+            <Text key={`${d.label}-${i}`} style={vizStyles.barLabel}>
+              {d.label}
+            </Text>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -228,5 +287,33 @@ const vizStyles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 6,
     paddingHorizontal: 1,
+  },
+  trendRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  axisCol: {
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingVertical: 4,
+    minWidth: 18,
+  },
+  axisLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  trendChart: {
+    flex: 1,
+  },
+  pointValueWrap: {
+    position: 'absolute',
+  },
+  pointValue: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.accent,
+    fontVariant: ['tabular-nums'],
   },
 });

@@ -3,6 +3,14 @@
  *
  * Fluxo: adicionar livro → registrar sessão → progresso atualizado
  *        → tela Hoje reflete a sessão ao ganhar foco.
+ *
+ * Seções por status real do ciclo de leitura:
+ *   Em andamento (READING com página > 0) → Ainda não iniciado
+ *   (página 0, inclui WANT_TO_READ) → Finalizados (FINISHED).
+ *   DROPPED fica oculto por enquanto — sem UI dedicada no v0.1; os dados
+ *   permanecem no banco local e podem ganhar seção própria depois.
+ *
+ * Toque no livro abre o detalhe com todas as sessões e notas.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -22,42 +30,77 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import {
   getBooks,
   createBook,
   deleteBook,
   createReadingSession,
+  getReadingSessions,
   DataError as ApiError,
 } from '../../lib/data.js';
-import {
-  calculateReadingProgress,
-  formatReadingProgress,
-} from '../../lib/readingProgress.js';
-import type { Book, CreateBookPayload, CreateReadingSessionPayload } from '../../types/reading.js';
+import { calculateReadingProgress } from '../../lib/readingProgress.js';
+import { getReadingSuccessMessage } from '../../lib/insights.js';
+import type {
+  Book,
+  ReadingSession,
+  CreateBookPayload,
+  CreateReadingSessionPayload,
+} from '../../types/reading.js';
 import { colors } from '../../components/ui.js';
+import { ProgressBar } from '../../components/viz.js';
+import { SuccessBanner } from '../../components/SuccessBanner.js';
 import { todayISO } from '@loopos/shared';
 
-// ─── ProgressBar ─────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function ProgressBar({ percent }: { percent: number }) {
-  return (
-    <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, { width: `${Math.min(percent, 100)}%` as `${number}%` }]} />
-    </View>
-  );
+type BookSection = 'reading' | 'notStarted' | 'finished';
+
+/** Classifica o livro pelo estado real de leitura (não só pelo status). */
+function classifyBook(book: Book): BookSection | null {
+  if (book.status === 'FINISHED') return 'finished';
+  if (book.status === 'DROPPED') return null; // oculto — ver doc no topo
+  if ((book.currentPage ?? 0) === 0) return 'notStarted';
+  return 'reading';
 }
+
+function formatSessionDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y ?? 0, (m ?? 1) - 1, d ?? 1);
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
+}
+
+const STATUS_LABELS: Record<BookSection, string> = {
+  reading: 'Em andamento',
+  notStarted: 'Ainda não iniciado',
+  finished: 'Finalizado',
+};
 
 // ─── BookCard ─────────────────────────────────────────────────────────────────
 
 interface BookCardProps {
   book: Book;
+  sessions: ReadingSession[];
+  today: string;
+  onOpenDetail: (book: Book) => void;
   onRegisterSession: (book: Book) => void;
   onDelete: (id: string) => void;
   deleting: boolean;
 }
 
-function BookCard({ book, onRegisterSession, onDelete, deleting }: BookCardProps) {
+function BookCard({
+  book, sessions, today, onOpenDetail, onRegisterSession, onDelete, deleting,
+}: BookCardProps) {
   const progress = calculateReadingProgress(book);
+  const section = classifyBook(book);
+  const finished = section === 'finished';
+
+  const mySessions = sessions.filter((s) => s.bookId === book.id);
+  const lastDate = mySessions.map((s) => s.date).sort().at(-1) ?? null;
+  const pagesToday = mySessions
+    .filter((s) => s.date === today)
+    .reduce((sum, s) => sum + s.pagesRead, 0);
+  const noteCount = mySessions.filter((s) => s.note).length;
 
   function handleDelete() {
     Alert.alert(
@@ -71,7 +114,7 @@ function BookCard({ book, onRegisterSession, onDelete, deleting }: BookCardProps
   }
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={() => onOpenDetail(book)} activeOpacity={0.75}>
       {/* Header do card */}
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleBlock}>
@@ -80,6 +123,12 @@ function BookCard({ book, onRegisterSession, onDelete, deleting }: BookCardProps
             <Text style={styles.cardAuthor}>{book.author}</Text>
           )}
         </View>
+        {finished && (
+          <View style={styles.finishedChip}>
+            <Ionicons name="checkmark" size={11} color={colors.success} />
+            <Text style={styles.finishedChipText}>Finalizado</Text>
+          </View>
+        )}
         <TouchableOpacity
           onPress={handleDelete}
           disabled={deleting}
@@ -88,7 +137,7 @@ function BookCard({ book, onRegisterSession, onDelete, deleting }: BookCardProps
         >
           {deleting
             ? <ActivityIndicator size="small" color={colors.error} />
-            : <Text style={styles.deleteBtnText}>✕</Text>
+            : <Ionicons name="close" size={16} color={colors.textMuted} />
           }
         </TouchableOpacity>
       </View>
@@ -96,19 +145,155 @@ function BookCard({ book, onRegisterSession, onDelete, deleting }: BookCardProps
       {/* Progresso */}
       {(book.totalPages ?? 0) > 0 && (
         <View style={styles.progressSection}>
-          <Text style={styles.progressLabel}>{formatReadingProgress(book)}</Text>
-          <ProgressBar percent={progress.percent} />
+          <View style={styles.progressRow}>
+            <Text style={[styles.progressPct, finished && styles.progressPctDone]}>
+              {progress.percent}%
+            </Text>
+            <View style={styles.progressBarArea}>
+              <ProgressBar
+                value={progress.percent / 100}
+                height={5}
+                color={finished ? colors.success : colors.accent}
+              />
+              <Text style={styles.progressLabel}>
+                {progress.current} de {progress.total} páginas
+                {pagesToday > 0 && ` · ${pagesToday} hoje`}
+                {pagesToday === 0 && lastDate && ` · última: ${formatSessionDate(lastDate)}`}
+              </Text>
+            </View>
+          </View>
         </View>
       )}
 
-      {/* Botão de sessão */}
-      <TouchableOpacity
-        style={styles.sessionBtn}
-        onPress={() => onRegisterSession(book)}
-      >
-        <Text style={styles.sessionBtnText}>+ Registrar leitura</Text>
-      </TouchableOpacity>
-    </View>
+      {/* Rodapé: sessões/notas + ação */}
+      <View style={styles.cardFooter}>
+        <Text style={styles.cardMeta}>
+          {mySessions.length === 0
+            ? 'Nenhuma sessão ainda'
+            : `${mySessions.length} sess${mySessions.length === 1 ? 'ão' : 'ões'}${
+                noteCount > 0 ? ` · ${noteCount} nota${noteCount === 1 ? '' : 's'}` : ''
+              }`}
+        </Text>
+        {!finished && (
+          <TouchableOpacity
+            style={styles.sessionBtn}
+            onPress={() => onRegisterSession(book)}
+          >
+            <Text style={styles.sessionBtnText}>+ Registrar leitura</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Modal: Detalhe do livro (sessões + notas) ────────────────────────────────
+
+interface BookDetailModalProps {
+  book: Book | null;
+  sessions: ReadingSession[];
+  onClose: () => void;
+  onRegisterSession: (book: Book) => void;
+}
+
+function BookDetailModal({ book, sessions, onClose, onRegisterSession }: BookDetailModalProps) {
+  if (!book) return null;
+
+  const progress = calculateReadingProgress(book);
+  const section = classifyBook(book) ?? 'reading';
+  const finished = section === 'finished';
+  const mySessions = sessions
+    .filter((s) => s.bookId === book.id)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const totalRead = mySessions.reduce((sum, s) => sum + s.pagesRead, 0);
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={styles.modalWrapper}>
+        <ScrollView contentContainerStyle={styles.detailContent}>
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle} numberOfLines={2}>{book.title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.modalCloseBtn}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+
+          {book.author && <Text style={styles.detailAuthor}>{book.author}</Text>}
+
+          {/* Status + progresso */}
+          <View style={styles.detailStatusRow}>
+            <View style={[styles.statusChip, finished && styles.statusChipDone]}>
+              <Text style={[styles.statusChipText, finished && styles.statusChipTextDone]}>
+                {STATUS_LABELS[section]}
+              </Text>
+            </View>
+            {mySessions.length > 0 && (
+              <Text style={styles.detailMeta}>
+                {totalRead} páginas em {mySessions.length} sess
+                {mySessions.length === 1 ? 'ão' : 'ões'}
+              </Text>
+            )}
+          </View>
+
+          {(book.totalPages ?? 0) > 0 && (
+            <View style={styles.detailProgress}>
+              <Text style={[styles.detailPct, finished && styles.progressPctDone]}>
+                {progress.percent}%
+              </Text>
+              <View style={styles.progressBarArea}>
+                <ProgressBar
+                  value={progress.percent / 100}
+                  height={6}
+                  color={finished ? colors.success : colors.accent}
+                />
+                <Text style={styles.progressLabel}>
+                  {progress.current} de {progress.total} páginas
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Sessões */}
+          <Text style={styles.detailSectionLabel}>SESSÕES DE LEITURA</Text>
+          {mySessions.length === 0 ? (
+            <Text style={styles.detailEmpty}>
+              Nenhuma sessão registrada ainda.
+            </Text>
+          ) : (
+            mySessions.map((s) => (
+              <View key={s.id} style={styles.sessionRow}>
+                <View style={styles.sessionHeader}>
+                  <Text style={styles.sessionDate}>{formatSessionDate(s.date)}</Text>
+                  <Text style={styles.sessionPages}>
+                    {s.pagesRead} pág{s.pagesRead === 1 ? '' : 's'}
+                    {s.fromPage !== null && s.toPage !== null && (
+                      <Text style={styles.sessionRange}>  ·  p. {s.fromPage}–{s.toPage}</Text>
+                    )}
+                  </Text>
+                </View>
+                {s.note && (
+                  <View style={styles.sessionNote}>
+                    <Ionicons name="chatbox-ellipses-outline" size={13} color={colors.textSecondary} />
+                    <Text style={styles.sessionNoteText}>{s.note}</Text>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
+
+          {/* Ação */}
+          {!finished && (
+            <TouchableOpacity
+              style={styles.saveBtn}
+              onPress={() => onRegisterSession(book)}
+            >
+              <Text style={styles.saveBtnText}>+ Registrar leitura</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
@@ -169,8 +354,9 @@ function AddBookModal({ visible, onClose, onSave }: AddBookModalProps) {
         author: author.trim() || null,
         totalPages: pages,
         currentPage: cur,
-        status: 'READING',
-        startedAt: new Date().toISOString(),
+        // Sem leitura iniciada → WANT_TO_READ (aparece em "Ainda não iniciado")
+        status: cur > 0 ? 'READING' : 'WANT_TO_READ',
+        startedAt: cur > 0 ? new Date().toISOString() : null,
       });
       reset();
     } catch (err) {
@@ -430,17 +616,23 @@ function RegisterSessionModal({ book, onClose, onSave }: RegisterSessionModalPro
 
 // ─── ReadingScreen ────────────────────────────────────────────────────────────
 
+type ListEntry = Book | { _section: string; _count: number; _hint?: string };
+
 export default function ReadingScreen() {
   const [books, setBooks] = useState<Book[]>([]);
+  const [sessions, setSessions] = useState<ReadingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [showAddBook, setShowAddBook] = useState(false);
   const [sessionBook, setSessionBook] = useState<Book | null>(null);
+  const [detailBook, setDetailBook] = useState<Book | null>(null);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const today = todayISO();
 
   // ─── Load ──────────────────────────────────────────────────────────────
 
@@ -449,8 +641,12 @@ export default function ReadingScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const data = await getBooks();
-      setBooks(data);
+      const [allBooks, allSessions] = await Promise.all([
+        getBooks(),
+        getReadingSessions(),
+      ]);
+      setBooks(allBooks);
+      setSessions(allSessions);
     } catch (err) {
       setError(err instanceof ApiError
         ? err.message
@@ -469,18 +665,31 @@ export default function ReadingScreen() {
     const created = await createBook(payload);
     setBooks((prev) => [created, ...prev]);
     setShowAddBook(false);
-    showFeedback(`"${created.title}" adicionado`);
+    setFeedback(`"${created.title}" adicionado à biblioteca.`);
   }
 
   // ─── Register session ──────────────────────────────────────────────────
 
   async function handleRegisterSession(payload: CreateReadingSessionPayload) {
+    const wasFinished = books.find((b) => b.id === payload.bookId)?.status === 'FINISHED';
     await createReadingSession(payload);
-    // Recarrega para pegar currentPage atualizado pelo backend
-    const updated = await getBooks();
-    setBooks(updated);
+    // Recarrega para pegar currentPage/status atualizados pela camada de dados
+    const [updatedBooks, updatedSessions] = await Promise.all([
+      getBooks(),
+      getReadingSessions(),
+    ]);
+    setBooks(updatedBooks);
+    setSessions(updatedSessions);
     setSessionBook(null);
-    showFeedback('Sessão registrada');
+
+    const nowFinished =
+      updatedBooks.find((b) => b.id === payload.bookId)?.status === 'FINISHED';
+    setFeedback(getReadingSuccessMessage(payload.pagesRead, !wasFinished && nowFinished));
+
+    // Mantém o detalhe (se aberto) apontando para o livro atualizado
+    setDetailBook((prev) =>
+      prev ? (updatedBooks.find((b) => b.id === prev.id) ?? null) : null,
+    );
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────
@@ -490,6 +699,7 @@ export default function ReadingScreen() {
     try {
       await deleteBook(id);
       setBooks((prev) => prev.filter((b) => b.id !== id));
+      setSessions((prev) => prev.filter((s) => s.bookId !== id));
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir livro.');
     } finally {
@@ -497,17 +707,28 @@ export default function ReadingScreen() {
     }
   }
 
-  // ─── Feedback ──────────────────────────────────────────────────────────
-
-  function showFeedback(msg: string) {
-    setSavedFeedback(msg);
-    setTimeout(() => setSavedFeedback(null), 3000);
-  }
-
   // ─── Render ────────────────────────────────────────────────────────────
 
-  const readingBooks = books.filter((b) => b.status === 'READING');
-  const otherBooks = books.filter((b) => b.status !== 'READING');
+  const readingBooks = books.filter((b) => classifyBook(b) === 'reading');
+  const notStartedBooks = books.filter((b) => classifyBook(b) === 'notStarted');
+  const finishedBooks = books.filter((b) => classifyBook(b) === 'finished');
+
+  const listData: ListEntry[] = [
+    {
+      _section: 'Em andamento',
+      _count: readingBooks.length,
+      ...(readingBooks.length === 0
+        ? { _hint: 'Nenhum livro em andamento. Adicione com "+ Livro" ou registre uma leitura.' }
+        : {}),
+    },
+    ...readingBooks,
+    ...(notStartedBooks.length > 0
+      ? [{ _section: 'Ainda não iniciado', _count: notStartedBooks.length }, ...notStartedBooks]
+      : []),
+    ...(finishedBooks.length > 0
+      ? [{ _section: 'Finalizados', _count: finishedBooks.length }, ...finishedBooks]
+      : []),
+  ];
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -515,19 +736,16 @@ export default function ReadingScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Leitura</Text>
-          <Text style={styles.headerSub}>Biblioteca pessoal</Text>
+          <Text style={styles.headerSub}>
+            {books.length > 0
+              ? `${readingBooks.length} em andamento · ${finishedBooks.length} finalizado${finishedBooks.length === 1 ? '' : 's'}`
+              : 'Biblioteca pessoal'}
+          </Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddBook(true)}>
           <Text style={styles.addBtnText}>+ Livro</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Feedback */}
-      {savedFeedback && (
-        <View style={styles.feedbackBanner}>
-          <Text style={styles.feedbackText}>✓ {savedFeedback}</Text>
-        </View>
-      )}
 
       {/* Conteúdo */}
       {loading ? (
@@ -545,14 +763,7 @@ export default function ReadingScreen() {
         </View>
       ) : (
         <FlatList
-          data={[
-            { _section: 'Em andamento', _count: readingBooks.length } as const,
-            ...readingBooks,
-            ...(otherBooks.length > 0
-              ? [{ _section: 'Outros', _count: otherBooks.length } as const]
-              : []),
-            ...otherBooks,
-          ]}
+          data={listData}
           keyExtractor={(item) =>
             '_section' in item ? `section-${item._section}` : item.id
           }
@@ -575,10 +786,8 @@ export default function ReadingScreen() {
                       <Text style={styles.sectionBadgeText}>{item._count}</Text>
                     </View>
                   )}
-                  {item._count === 0 && (
-                    <Text style={styles.emptyInline}>
-                      Nenhum livro em andamento. Adicione um livro com "+ Livro".
-                    </Text>
+                  {item._hint && (
+                    <Text style={styles.emptyInline}>{item._hint}</Text>
                   )}
                 </View>
               );
@@ -586,6 +795,9 @@ export default function ReadingScreen() {
             return (
               <BookCard
                 book={item}
+                sessions={sessions}
+                today={today}
+                onOpenDetail={setDetailBook}
                 onRegisterSession={setSessionBook}
                 onDelete={(id) => void handleDelete(id)}
                 deleting={deletingId === item.id}
@@ -606,6 +818,18 @@ export default function ReadingScreen() {
         onClose={() => setSessionBook(null)}
         onSave={handleRegisterSession}
       />
+      <BookDetailModal
+        book={detailBook}
+        sessions={sessions}
+        onClose={() => setDetailBook(null)}
+        onRegisterSession={(b) => {
+          setDetailBook(null);
+          setSessionBook(b);
+        }}
+      />
+
+      {/* Feedback de sucesso */}
+      <SuccessBanner message={feedback} onHide={() => setFeedback(null)} />
     </SafeAreaView>
   );
 }
@@ -635,15 +859,6 @@ const styles = StyleSheet.create({
   },
   addBtnText: { color: colors.bg, fontWeight: '700', fontSize: 14 },
 
-  feedbackBanner: {
-    backgroundColor: colors.accentDim,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  feedbackText: { color: colors.success, fontSize: 13, fontWeight: '500' },
-
   listContent: { padding: 16, paddingBottom: 100, gap: 10 },
 
   sectionRow: {
@@ -652,6 +867,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4,
     marginBottom: 2,
+    flexWrap: 'wrap',
   },
   sectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2, color: colors.textSecondary },
   sectionBadge: {
@@ -665,45 +881,136 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    backgroundColor: colors.surfaceGlass,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderGlass,
     gap: 10,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardTitleBlock: { flex: 1, marginRight: 8, gap: 2 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  cardTitleBlock: { flex: 1, gap: 2 },
   cardTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
   cardAuthor: { fontSize: 13, color: colors.textSecondary },
   deleteBtn: { padding: 2 },
-  deleteBtnText: { fontSize: 14, color: colors.textMuted },
+
+  finishedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(74, 222, 128, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  finishedChipText: { fontSize: 11, fontWeight: '600', color: colors.success },
 
   progressSection: { gap: 6 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  progressPct: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.accent,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+    minWidth: 52,
+  },
+  progressPctDone: { color: colors.success },
+  progressBarArea: { flex: 1, gap: 5 },
   progressLabel: { fontSize: 12, color: colors.textSecondary },
-  progressTrack: {
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    overflow: 'hidden',
+
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-  },
+  cardMeta: { fontSize: 12, color: colors.textMuted, flex: 1 },
 
   sessionBtn: {
     backgroundColor: colors.accentDim,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.accentGlassBorder,
   },
-  sessionBtnText: { color: colors.accent, fontWeight: '600', fontSize: 14 },
+  sessionBtnText: { color: colors.accent, fontWeight: '600', fontSize: 13 },
 
-  // Modal
+  // Detail modal
+  detailContent: { padding: 20, gap: 10, paddingBottom: 40 },
+  detailAuthor: { fontSize: 14, color: colors.textSecondary, marginTop: -6 },
+  detailStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
+  statusChip: {
+    backgroundColor: colors.accentGlass,
+    borderWidth: 1,
+    borderColor: colors.accentGlassBorder,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  statusChipDone: {
+    backgroundColor: 'rgba(74, 222, 128, 0.10)',
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+  },
+  statusChipText: { fontSize: 12, fontWeight: '600', color: colors.accent },
+  statusChipTextDone: { color: colors.success },
+  detailMeta: { fontSize: 12, color: colors.textMuted },
+  detailProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  detailPct: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.accent,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  detailSectionLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 1,
+    color: colors.textMuted,
+    marginTop: 10,
+  },
+  detailEmpty: { fontSize: 13, color: colors.textMuted, fontStyle: 'italic' },
+  sessionRow: {
+    backgroundColor: colors.surfaceGlass,
+    borderWidth: 1,
+    borderColor: colors.borderGlass,
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
+  },
+  sessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  sessionDate: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'capitalize' },
+  sessionPages: { fontSize: 13, fontWeight: '600', color: colors.text },
+  sessionRange: { fontSize: 12, fontWeight: '500', color: colors.textMuted },
+  sessionNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingTop: 2,
+  },
+  sessionNoteText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+
+  // Modal (form)
   modalWrapper: { flex: 1, backgroundColor: colors.bg },
   modalContent: { padding: 20, gap: 6, paddingBottom: 40 },
   modalHeader: {
@@ -711,6 +1018,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    gap: 12,
   },
   modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text, flex: 1 },
   modalCloseBtn: { color: colors.textSecondary, fontSize: 15 },

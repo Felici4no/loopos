@@ -33,6 +33,7 @@ import {
 } from '../../lib/data.js';
 import type { ListNode } from '../../types/lists.js';
 import { colors } from '../../components/ui.js';
+import { ProgressBar } from '../../components/viz.js';
 
 // ─── ItemRow — item ou subitem dentro de uma lista ───────────────────────────
 
@@ -400,6 +401,7 @@ export default function ListsScreen() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedList, setSelectedList] = useState<ListNode | null>(null);
+  const [rootStats, setRootStats] = useState<Record<string, { total: number; done: number }>>({});
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -408,6 +410,17 @@ export default function ListsScreen() {
     try {
       const data = await getListNodes(null);
       setRoots(data);
+      // Conta itens/concluídos de cada lista (dados reais do localDb)
+      const withChildren = await Promise.all(data.map((r) => getListNode(r.id)));
+      const stats: Record<string, { total: number; done: number }> = {};
+      for (const node of withChildren) {
+        const children = node.children ?? [];
+        stats[node.id] = {
+          total: children.length,
+          done: children.filter((c) => c.isDone).length,
+        };
+      }
+      setRootStats(stats);
     } catch (err) {
       setError(err instanceof ApiError
         ? err.message
@@ -536,25 +549,46 @@ export default function ListsScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <View style={styles.rootCard}>
-              <TouchableOpacity style={styles.rootCardMain} onPress={() => setSelectedList(item)}>
-                <Text style={styles.rootCardTitle}>{item.title}</Text>
-                <Text style={styles.rootCardOpenHint}>Abrir ›</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => void handleDeleteRoot(item)}
-                disabled={deletingId === item.id}
-                style={styles.rootDeleteBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                {deletingId === item.id
-                  ? <ActivityIndicator size="small" color={colors.error} />
-                  : <Text style={styles.rootDeleteBtnText}>✕</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const stats = rootStats[item.id];
+            const hasItems = (stats?.total ?? 0) > 0;
+            const allDone = hasItems && stats!.done === stats!.total;
+            return (
+              <View style={styles.rootCard}>
+                <TouchableOpacity style={styles.rootCardMain} onPress={() => setSelectedList(item)}>
+                  <View style={styles.rootCardHeader}>
+                    <Text style={styles.rootCardTitle}>{item.title}</Text>
+                    <Text style={styles.rootCardOpenHint}>›</Text>
+                  </View>
+                  <Text style={[styles.rootCardCount, allDone && styles.rootCardCountDone]}>
+                    {!stats || stats.total === 0
+                      ? 'Lista vazia — toque para adicionar itens'
+                      : allDone
+                        ? `${stats.total} ${stats.total === 1 ? 'item concluído' : 'itens concluídos'} ✓`
+                        : `${stats.done} de ${stats.total} concluído${stats.total === 1 ? '' : 's'}`}
+                  </Text>
+                  {hasItems && (
+                    <ProgressBar
+                      value={stats!.done / stats!.total}
+                      height={4}
+                      color={allDone ? colors.success : colors.accent}
+                    />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void handleDeleteRoot(item)}
+                  disabled={deletingId === item.id}
+                  style={styles.rootDeleteBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  {deletingId === item.id
+                    ? <ActivityIndicator size="small" color={colors.error} />
+                    : <Text style={styles.rootDeleteBtnText}>✕</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            );
+          }}
         />
       )}
     </SafeAreaView>
@@ -612,22 +646,28 @@ const styles = StyleSheet.create({
   // Root card
   rootCard: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    backgroundColor: colors.surfaceGlass,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderGlass,
     overflow: 'hidden',
   },
   rootCardMain: {
     flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 7,
+  },
+  rootCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    gap: 8,
   },
   rootCardTitle: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 },
-  rootCardOpenHint: { fontSize: 13, color: colors.accent },
+  rootCardOpenHint: { fontSize: 16, color: colors.textMuted },
+  rootCardCount: { fontSize: 12, color: colors.textSecondary },
+  rootCardCountDone: { color: colors.success },
   rootDeleteBtn: { justifyContent: 'center', paddingHorizontal: 14, borderLeftWidth: 1, borderLeftColor: colors.border },
   rootDeleteBtnText: { fontSize: 14, color: colors.textMuted },
 
@@ -646,7 +686,9 @@ const styles = StyleSheet.create({
   backBtnText: { color: colors.accent, fontSize: 15, fontWeight: '600' },
   detailTitle: { fontSize: 18, fontWeight: '700', color: colors.text, flex: 1 },
 
-  detailListContent: { padding: 16, paddingBottom: 12, gap: 4 },
+  // Tab bar flutuante — conteúdo rola por baixo dela; sem esse respiro os
+  // últimos itens ficavam escondidos/inacessíveis atrás da navbar.
+  detailListContent: { padding: 16, paddingBottom: 100, gap: 4 },
 
   // Item rows
   itemBlock: { gap: 4 },

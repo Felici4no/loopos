@@ -45,22 +45,17 @@ import {
   TimeProgress,
   WeekBars,
   TrendLine,
-  type DayPoint,
 } from '../../components/viz.js';
+import {
+  parseISODate,
+  toISODate,
+  timeProgress,
+  formatKm,
+  getWeeklyRunKmSeries,
+  getWeeklyPullupSeries,
+} from '../../lib/insights.js';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-
-function parseISODate(iso: string): Date {
-  const [year, month, day] = iso.split('-').map(Number);
-  return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
-}
-
-function toISODate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 /** "quinta-feira, 2 de julho de 2026" com a primeira letra maiúscula. */
 function formatFullDate(iso: string): string {
@@ -73,63 +68,6 @@ function formatFullDate(iso: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Progresso do tempo: quanto da semana/mês/ano já passou (0–1). */
-function timeProgress(iso: string): { week: number; month: number; year: number } {
-  const d = parseISODate(iso);
-  const mondayIndex = (d.getDay() + 6) % 7; // seg=0 ... dom=6
-  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  const startOfYear = new Date(d.getFullYear(), 0, 1);
-  const dayOfYear =
-    Math.floor((d.getTime() - startOfYear.getTime()) / 86_400_000) + 1;
-  const daysInYear =
-    (new Date(d.getFullYear() + 1, 0, 1).getTime() - startOfYear.getTime()) /
-    86_400_000;
-  return {
-    week: (mondayIndex + 1) / 7,
-    month: d.getDate() / daysInMonth,
-    year: dayOfYear / daysInYear,
-  };
-}
-
-const WEEKDAY_INITIALS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'] as const;
-
-/** Últimos `n` dias terminando em `endIso` (inclusive). */
-function lastDays(endIso: string, n: number): { iso: string; label: string }[] {
-  const end = parseISODate(endIso);
-  const out: { iso: string; label: string }[] = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(end.getTime() - i * 86_400_000);
-    out.push({ iso: toISODate(d), label: WEEKDAY_INITIALS[d.getDay()] ?? '' });
-  }
-  return out;
-}
-
-// ─── Corpo: agregações ────────────────────────────────────────────────────────
-
-function repsByDay(workouts: WorkoutEntry[], days: { iso: string; label: string }[]): DayPoint[] {
-  return days.map((day, i) => ({
-    label: day.label,
-    emphasis: i === days.length - 1,
-    value: workouts
-      .filter((w) => w.date === day.iso)
-      .reduce((sum, w) => sum + (w.pullupSets ?? 0) * (w.pullupReps ?? 0), 0),
-  }));
-}
-
-function kmByDay(workouts: WorkoutEntry[], days: { iso: string; label: string }[]): DayPoint[] {
-  return days.map((day, i) => ({
-    label: day.label,
-    emphasis: i === days.length - 1,
-    value: workouts
-      .filter((w) => w.date === day.iso)
-      .reduce((sum, w) => sum + (w.runKm ?? 0), 0),
-  }));
-}
-
-function formatKm(v: number): string {
-  return Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ',');
-}
-
 // ─── Corpo card ───────────────────────────────────────────────────────────────
 
 function BodyCard({
@@ -139,12 +77,9 @@ function BodyCard({
   today: TodayResponse['workouts'];
   workouts: WorkoutEntry[];
 }) {
-  const days = lastDays(
-    today[0]?.date ?? toISODate(new Date()),
-    7,
-  );
-  const reps = repsByDay(workouts, days);
-  const km = kmByDay(workouts, days);
+  const endIso = today[0]?.date ?? toISODate(new Date());
+  const reps = getWeeklyPullupSeries(workouts, endIso);
+  const km = getWeeklyRunKmSeries(workouts, endIso);
   const totalReps = reps.reduce((s, d) => s + d.value, 0);
   const avgReps = Math.round(totalReps / 7);
   const totalKm = km.reduce((s, d) => s + d.value, 0);
@@ -182,7 +117,7 @@ function BodyCard({
                 <Text style={styles.vizLabel}>KM POR DIA</Text>
                 <Text style={styles.vizMeta}>{formatKm(totalKm)} km na semana</Text>
               </View>
-              <TrendLine data={km} height={52} />
+              <TrendLine data={km} height={52} formatValue={formatKm} />
             </View>
           )}
         </>

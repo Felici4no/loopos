@@ -38,6 +38,13 @@ import {
   calculateCurrentStreak,
   getTrackerStatusLabel,
 } from '../../lib/rhythmStats.js';
+import {
+  getTrackerDayProgress,
+  getTrackerSuccessMessage,
+} from '../../lib/insights.js';
+import { ProgressBar } from '../../components/viz.js';
+import { SuccessBanner } from '../../components/SuccessBanner.js';
+import { Ionicons } from '@expo/vector-icons';
 import type {
   Tracker,
   TrackerEvent,
@@ -266,9 +273,14 @@ interface TrackerCardProps {
 function TrackerCard({
   tracker, events, today, onCheck, onDelete, deleting, checking,
 }: TrackerCardProps) {
-  const done = hasEventToday(tracker, events, today);
+  const dayProgress = getTrackerDayProgress(tracker, events, today);
+  // "done": boolean marcado, ou contador com meta batida.
+  const done = dayProgress.progress !== null
+    ? dayProgress.done
+    : hasEventToday(tracker, events, today);
   const streak = calculateCurrentStreak(tracker, events, today);
   const statusLabel = getTrackerStatusLabel(tracker, events, today);
+  const isCounter = tracker.type !== 'boolean';
 
   function handleDelete() {
     Alert.alert(
@@ -302,6 +314,32 @@ function TrackerCard({
         </TouchableOpacity>
       </View>
 
+      {/* Progresso até a meta (contadores com target) */}
+      {dayProgress.progress !== null && dayProgress.target !== null && (
+        <View style={styles.progressBlock}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressCount}>
+              {dayProgress.current}
+              <Text style={styles.progressTarget}>
+                {' '}/ {dayProgress.target}
+                {tracker.type === 'duration' ? ' min' : ''}
+              </Text>
+            </Text>
+            {done && (
+              <View style={styles.goalChip}>
+                <Ionicons name="checkmark" size={11} color={colors.success} />
+                <Text style={styles.goalChipText}>meta batida</Text>
+              </View>
+            )}
+          </View>
+          <ProgressBar
+            value={dayProgress.progress}
+            height={5}
+            color={done ? colors.success : colors.accent}
+          />
+        </View>
+      )}
+
       {/* Status row */}
       <View style={styles.statusRow}>
         <Text style={[styles.statusLabel, done && styles.statusDone]}>
@@ -309,28 +347,29 @@ function TrackerCard({
         </Text>
         {streak >= 2 && (
           <View style={styles.streakBadge}>
-            <Text style={styles.streakText}>{streak}🔥</Text>
+            <Ionicons name="flame" size={12} color={colors.accent} />
+            <Text style={styles.streakText}>{streak} dias</Text>
           </View>
         )}
       </View>
 
-      {/* Meta, se existir */}
-      {tracker.target !== null && (
-        <Text style={styles.targetLabel}>
-          Meta: {tracker.target}{tracker.type === 'duration' ? ' min' : ''}
-        </Text>
-      )}
-
-      {/* Botão de check */}
+      {/* Botão de registro:
+          boolean → 1x por dia; contadores → acumulam até (e além de) a meta */}
       <TouchableOpacity
         style={[styles.checkBtn, done && styles.checkBtnDone]}
         onPress={() => onCheck(tracker)}
-        disabled={checking || done}
+        disabled={checking || (!isCounter && done)}
       >
         {checking
           ? <ActivityIndicator size="small" color={done ? colors.bg : colors.accent} />
           : <Text style={[styles.checkBtnText, done && styles.checkBtnTextDone]}>
-              {done ? '✓ Feito hoje' : '+ Registrar hoje'}
+              {!isCounter && done
+                ? '✓ Feito hoje'
+                : isCounter && done
+                  ? '✓ Meta batida · adicionar mais'
+                  : isCounter
+                    ? '+ Adicionar'
+                    : '+ Registrar hoje'}
             </Text>
         }
       </TouchableOpacity>
@@ -393,42 +432,46 @@ export default function RhythmScreen() {
   // ─── Check / register event ───────────────────────────────────────────────
 
   async function handleCheck(tracker: Tracker) {
-    // Anti-duplicidade: verificação no cliente
-    if (hasEventToday(tracker, events, today)) {
-      showFeedbackMsg(`"${tracker.title}" já registrado hoje`);
-      return;
-    }
-
-    // Trackers count/duration pedem valor numérico
+    // Trackers count/duration acumulam múltiplos registros no dia
+    // (ex.: copos de água) — pedem valor numérico a cada registro.
     if (tracker.type !== 'boolean') {
       setValueTracker(tracker);
       return;
     }
 
-    await doRegisterEvent(tracker.id, 'check', undefined);
+    // Anti-duplicidade só para boolean: 1 check por dia
+    if (hasEventToday(tracker, events, today)) {
+      showFeedbackMsg(`${tracker.title} já registrado hoje.`);
+      return;
+    }
+
+    await doRegisterEvent(tracker, 'check', undefined);
   }
 
   async function handleValueSave(value: number) {
     if (!valueTracker) return;
-    await doRegisterEvent(valueTracker.id, 'value', value);
+    await doRegisterEvent(valueTracker, 'value', value);
     setValueTracker(null);
   }
 
   async function doRegisterEvent(
-    trackerId: string,
+    tracker: Tracker,
     eventType: 'check' | 'value',
     value: number | undefined,
   ) {
-    setCheckingId(trackerId);
+    setCheckingId(tracker.id);
     try {
       const event = await createTrackerEvent({
-        trackerId,
+        trackerId: tracker.id,
         date: today,
         eventType,
         value: value ?? null,
       });
-      setEvents((prev) => [...prev, event]);
-      showFeedbackMsg('Registrado ✓');
+      const nextEvents = [...events, event];
+      setEvents(nextEvents);
+      // Mensagem calculada do estado real após o registro
+      const progressAfter = getTrackerDayProgress(tracker, nextEvents, today);
+      showFeedbackMsg(getTrackerSuccessMessage(tracker, progressAfter));
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao registrar.');
     } finally {
@@ -455,12 +498,15 @@ export default function RhythmScreen() {
 
   function showFeedbackMsg(msg: string) {
     setFeedback(msg);
-    setTimeout(() => setFeedback(null), 3000);
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
-  const doneToday = trackers.filter((t) => hasEventToday(t, events, today)).length;
+  // "Concluído" real: booleans marcados; contadores só quando batem a meta.
+  const doneToday = trackers.filter((t) => {
+    const p = getTrackerDayProgress(t, events, today);
+    return p.progress !== null ? p.done : hasEventToday(t, events, today);
+  }).length;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -478,13 +524,6 @@ export default function RhythmScreen() {
           <Text style={styles.addBtnText}>+ Contador</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Feedback */}
-      {feedback && (
-        <View style={styles.feedbackBanner}>
-          <Text style={styles.feedbackText}>{feedback}</Text>
-        </View>
-      )}
 
       {/* Conteúdo */}
       {loading ? (
@@ -553,6 +592,9 @@ export default function RhythmScreen() {
         onClose={() => setValueTracker(null)}
         onSave={handleValueSave}
       />
+
+      {/* Feedback de sucesso */}
+      <SuccessBanner message={feedback} onHide={() => setFeedback(null)} />
     </SafeAreaView>
   );
 }
@@ -616,11 +658,11 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    backgroundColor: colors.surfaceGlass,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderGlass,
     gap: 8,
   },
   cardDone: { borderColor: colors.accent + '44' },
@@ -635,13 +677,50 @@ const styles = StyleSheet.create({
   statusLabel: { fontSize: 13, color: colors.textSecondary, flex: 1 },
   statusDone: { color: colors.success },
   streakBadge: {
-    backgroundColor: colors.accentDim,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.accentGlass,
+    borderWidth: 1,
+    borderColor: colors.accentGlassBorder,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
   },
   streakText: { fontSize: 12, color: colors.accent, fontWeight: '600' },
-  targetLabel: { fontSize: 12, color: colors.textMuted },
+
+  // Progresso até a meta
+  progressBlock: { gap: 6 },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  progressCount: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.4,
+    fontVariant: ['tabular-nums'],
+  },
+  progressTarget: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  goalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(74, 222, 128, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  goalChipText: { fontSize: 11, fontWeight: '600', color: colors.success },
 
   checkBtn: {
     borderWidth: 1,
