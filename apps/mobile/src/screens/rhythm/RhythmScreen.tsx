@@ -28,11 +28,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getTrackers,
   createTracker,
-  deleteTracker,
   getTrackerEvents,
-  createTrackerEvent,
   DataError as ApiError,
 } from '../../lib/data.js';
+import { registerTrackerEvent, deleteTracker } from '../../lib/actions.js';
+import { confirmDestructive } from '../../lib/confirm.js';
 import {
   hasEventToday,
   calculateCurrentStreak,
@@ -40,7 +40,7 @@ import {
 } from '../../lib/rhythmStats.js';
 import {
   getTrackerDayProgress,
-  getTrackerSuccessMessage,
+  getJourneyDays,
 } from '../../lib/insights.js';
 import { ProgressBar } from '../../components/viz.js';
 import { SuccessBanner } from '../../components/SuccessBanner.js';
@@ -281,17 +281,7 @@ function TrackerCard({
   const streak = calculateCurrentStreak(tracker, events, today);
   const statusLabel = getTrackerStatusLabel(tracker, events, today);
   const isCounter = tracker.type !== 'boolean';
-
-  function handleDelete() {
-    Alert.alert(
-      'Excluir tracker',
-      `"${tracker.title}" e todos os eventos serão removidos.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Excluir', style: 'destructive', onPress: () => onDelete(tracker.id) },
-      ],
-    );
-  }
+  const journey = getJourneyDays(events, tracker.id, today);
 
   return (
     <View style={[styles.card, done && styles.cardDone]}>
@@ -299,10 +289,13 @@ function TrackerCard({
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleBlock}>
           <Text style={styles.cardTitle}>{tracker.title}</Text>
-          <Text style={styles.cardType}>{TYPE_LABELS[tracker.type]}</Text>
+          <Text style={styles.cardType}>
+            {TYPE_LABELS[tracker.type]}
+            {journey >= 2 && ` · jornada de ${journey} dias`}
+          </Text>
         </View>
         <TouchableOpacity
-          onPress={handleDelete}
+          onPress={() => onDelete(tracker.id)}
           disabled={deleting}
           style={styles.deleteBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -461,17 +454,15 @@ export default function RhythmScreen() {
   ) {
     setCheckingId(tracker.id);
     try {
-      const event = await createTrackerEvent({
+      // Mensagem (meta batida / jornada / registro) vem da action
+      const { data: event, message } = await registerTrackerEvent(tracker, {
         trackerId: tracker.id,
         date: today,
         eventType,
         value: value ?? null,
       });
-      const nextEvents = [...events, event];
-      setEvents(nextEvents);
-      // Mensagem calculada do estado real após o registro
-      const progressAfter = getTrackerDayProgress(tracker, nextEvents, today);
-      showFeedbackMsg(getTrackerSuccessMessage(tracker, progressAfter));
+      setEvents((prev) => [...prev, event]);
+      showFeedbackMsg(message);
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao registrar.');
     } finally {
@@ -482,11 +473,19 @@ export default function RhythmScreen() {
   // ─── Delete tracker ───────────────────────────────────────────────────────
 
   async function handleDelete(id: string) {
+    const tracker = trackers.find((t) => t.id === id);
+    const ok = await confirmDestructive({
+      title: 'Excluir este contador?',
+      message: `"${tracker?.title ?? 'Contador'}" e todos os seus registros serão removidos permanentemente.`,
+    });
+    if (!ok) return;
+
     setDeletingId(id);
     try {
-      await deleteTracker(id);
+      const { message } = await deleteTracker(id);
       setTrackers((prev) => prev.filter((t) => t.id !== id));
       setEvents((prev) => prev.filter((e) => e.trackerId !== id));
+      showFeedbackMsg(message);
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir.');
     } finally {

@@ -181,6 +181,40 @@ export function getTrackerDayProgress(
   };
 }
 
+// ─── Jornada ──────────────────────────────────────────────────────────────────
+
+/**
+ * Dias de jornada do tracker: distância em dias corridos desde o primeiro
+ * evento (inclusive) até a data de referência. 0 se não há eventos.
+ * Ex.: primeiro evento há 5 dias → jornada de 6 dias (o dia 1 conta).
+ */
+export function getJourneyDays(
+  events: Array<{ trackerId?: string; date: string }>,
+  trackerId: string,
+  today: string,
+): number {
+  const dates = events
+    .filter((e) => (e.trackerId ?? '') === trackerId)
+    .map((e) => e.date)
+    .sort();
+  const first = dates[0];
+  if (!first) return 0;
+  const diff = Math.round(
+    (parseISODate(today).getTime() - parseISODate(first).getTime()) / 86_400_000,
+  );
+  return Math.max(diff + 1, 1);
+}
+
+/**
+ * Label curto de continuidade para a Home:
+ * streak ativo tem prioridade; senão a jornada; senão null.
+ */
+export function getContinuityLabel(streakDays: number, journeyDays: number): string | null {
+  if (streakDays >= 2) return `${streakDays} dias seguidos`;
+  if (journeyDays >= 2) return `jornada de ${journeyDays} dias`;
+  return null;
+}
+
 // ─── Mensagens de sucesso ─────────────────────────────────────────────────────
 
 /** Mensagem após registrar treino. */

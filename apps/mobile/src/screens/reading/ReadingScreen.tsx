@@ -34,13 +34,12 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   getBooks,
   createBook,
-  deleteBook,
-  createReadingSession,
   getReadingSessions,
   DataError as ApiError,
 } from '../../lib/data.js';
+import { registerReadingSession, deleteBook } from '../../lib/actions.js';
+import { confirmDestructive } from '../../lib/confirm.js';
 import { calculateReadingProgress } from '../../lib/readingProgress.js';
-import { getReadingSuccessMessage } from '../../lib/insights.js';
 import type {
   Book,
   ReadingSession,
@@ -102,17 +101,6 @@ function BookCard({
     .reduce((sum, s) => sum + s.pagesRead, 0);
   const noteCount = mySessions.filter((s) => s.note).length;
 
-  function handleDelete() {
-    Alert.alert(
-      'Excluir livro',
-      `"${book.title}" e todas as suas sessões serão removidos.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Excluir', style: 'destructive', onPress: () => onDelete(book.id) },
-      ],
-    );
-  }
-
   return (
     <TouchableOpacity style={styles.card} onPress={() => onOpenDetail(book)} activeOpacity={0.75}>
       {/* Header do card */}
@@ -130,7 +118,7 @@ function BookCard({
           </View>
         )}
         <TouchableOpacity
-          onPress={handleDelete}
+          onPress={() => onDelete(book.id)}
           disabled={deleting}
           style={styles.deleteBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -671,8 +659,8 @@ export default function ReadingScreen() {
   // ─── Register session ──────────────────────────────────────────────────
 
   async function handleRegisterSession(payload: CreateReadingSessionPayload) {
-    const wasFinished = books.find((b) => b.id === payload.bookId)?.status === 'FINISHED';
-    await createReadingSession(payload);
+    // Mensagem ("Você leu X páginas" / "Livro finalizado") vem da action
+    const { message } = await registerReadingSession(payload);
     // Recarrega para pegar currentPage/status atualizados pela camada de dados
     const [updatedBooks, updatedSessions] = await Promise.all([
       getBooks(),
@@ -681,10 +669,7 @@ export default function ReadingScreen() {
     setBooks(updatedBooks);
     setSessions(updatedSessions);
     setSessionBook(null);
-
-    const nowFinished =
-      updatedBooks.find((b) => b.id === payload.bookId)?.status === 'FINISHED';
-    setFeedback(getReadingSuccessMessage(payload.pagesRead, !wasFinished && nowFinished));
+    setFeedback(message);
 
     // Mantém o detalhe (se aberto) apontando para o livro atualizado
     setDetailBook((prev) =>
@@ -695,11 +680,19 @@ export default function ReadingScreen() {
   // ─── Delete ────────────────────────────────────────────────────────────
 
   async function handleDelete(id: string) {
+    const book = books.find((b) => b.id === id);
+    const ok = await confirmDestructive({
+      title: 'Excluir este livro e suas sessões?',
+      message: `"${book?.title ?? 'Livro'}" e todas as sessões de leitura (incluindo notas) serão removidos permanentemente.`,
+    });
+    if (!ok) return;
+
     setDeletingId(id);
     try {
-      await deleteBook(id);
+      const { message } = await deleteBook(id);
       setBooks((prev) => prev.filter((b) => b.id !== id));
       setSessions((prev) => prev.filter((s) => s.bookId !== id));
+      setFeedback(message);
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir livro.');
     } finally {

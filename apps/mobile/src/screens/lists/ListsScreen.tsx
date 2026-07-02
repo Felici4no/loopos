@@ -27,13 +27,14 @@ import {
   getListNodes,
   getListNode,
   createListNode,
-  updateListNode,
-  deleteListNode,
   DataError as ApiError,
 } from '../../lib/data.js';
+import { toggleListItem, deleteListNode } from '../../lib/actions.js';
+import { confirmDestructive } from '../../lib/confirm.js';
 import type { ListNode } from '../../types/lists.js';
 import { colors } from '../../components/ui.js';
 import { ProgressBar } from '../../components/viz.js';
+import { SuccessBanner } from '../../components/SuccessBanner.js';
 
 // ─── ItemRow — item ou subitem dentro de uma lista ───────────────────────────
 
@@ -140,9 +141,10 @@ interface ListDetailViewProps {
   list: ListNode;
   onBack: () => void;
   onListChanged: () => void;
+  onFeedback: (message: string) => void;
 }
 
-function ListDetailView({ list, onBack, onListChanged }: ListDetailViewProps) {
+function ListDetailView({ list, onBack, onListChanged, onFeedback }: ListDetailViewProps) {
   const [items, setItems] = useState<ListNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -191,7 +193,8 @@ function ListDetailView({ list, onBack, onListChanged }: ListDetailViewProps) {
   async function handleToggleDone(node: ListNode) {
     setBusyId(node.id);
     try {
-      const updated = await updateListNode(node.id, { isDone: !node.isDone });
+      // "Item concluído." / "Item reaberto." vem da action
+      const { data: updated, message } = await toggleListItem(node);
       // Atualiza no nível correto (item ou subitem em cache)
       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       setChildrenCache((prev) => {
@@ -201,6 +204,7 @@ function ListDetailView({ list, onBack, onListChanged }: ListDetailViewProps) {
         }
         return next;
       });
+      onFeedback(message);
       onListChanged();
     } catch (err) {
       Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao atualizar.');
@@ -210,36 +214,33 @@ function ListDetailView({ list, onBack, onListChanged }: ListDetailViewProps) {
   }
 
   async function handleDelete(node: ListNode) {
-    Alert.alert(
-      'Excluir item',
-      node.children?.length || childrenCache[node.id]?.length
-        ? `"${node.title}" e seus subitens serão removidos.`
-        : `"${node.title}" será removido.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => void (async () => {
-            try {
-              await deleteListNode(node.id);
-              setItems((prev) => prev.filter((i) => i.id !== node.id));
-              setChildrenCache((prev) => {
-                const next = { ...prev };
-                delete next[node.id];
-                for (const parentId of Object.keys(next)) {
-                  next[parentId] = next[parentId]!.filter((c) => c.id !== node.id);
-                }
-                return next;
-              });
-              onListChanged();
-            } catch (err) {
-              Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir.');
-            }
-          })(),
-        },
-      ],
+    const hasChildren = Boolean(
+      node.children?.length || childrenCache[node.id]?.length,
     );
+    const ok = await confirmDestructive({
+      title: 'Excluir este item?',
+      message: hasChildren
+        ? `"${node.title}" e todos os seus subitens serão removidos permanentemente.`
+        : `"${node.title}" será removido permanentemente.`,
+    });
+    if (!ok) return;
+
+    try {
+      const { message } = await deleteListNode(node);
+      setItems((prev) => prev.filter((i) => i.id !== node.id));
+      setChildrenCache((prev) => {
+        const next = { ...prev };
+        delete next[node.id];
+        for (const parentId of Object.keys(next)) {
+          next[parentId] = next[parentId]!.filter((c) => c.id !== node.id);
+        }
+        return next;
+      });
+      onFeedback(message);
+      onListChanged();
+    } catch (err) {
+      Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir.');
+    }
   }
 
   async function handleExpand(node: ListNode) {
@@ -285,7 +286,7 @@ function ListDetailView({ list, onBack, onListChanged }: ListDetailViewProps) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.flex}
+      style={styles.detailWrap}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={80}
     >
@@ -402,6 +403,7 @@ export default function ListsScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedList, setSelectedList] = useState<ListNode | null>(null);
   const [rootStats, setRootStats] = useState<Record<string, { total: number; done: number }>>({});
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -449,28 +451,22 @@ export default function ListsScreen() {
   }
 
   async function handleDeleteRoot(node: ListNode) {
-    Alert.alert(
-      'Excluir lista',
-      `"${node.title}" e todos os itens dentro dela serão removidos permanentemente.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => void (async () => {
-            setDeletingId(node.id);
-            try {
-              await deleteListNode(node.id);
-              setRoots((prev) => prev.filter((r) => r.id !== node.id));
-            } catch (err) {
-              Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir.');
-            } finally {
-              setDeletingId(null);
-            }
-          })(),
-        },
-      ],
-    );
+    const ok = await confirmDestructive({
+      title: 'Excluir esta lista e todos os itens dentro?',
+      message: `"${node.title}" e todos os itens dentro dela serão removidos permanentemente.`,
+    });
+    if (!ok) return;
+
+    setDeletingId(node.id);
+    try {
+      const { message } = await deleteListNode(node);
+      setRoots((prev) => prev.filter((r) => r.id !== node.id));
+      setFeedback(message);
+    } catch (err) {
+      Alert.alert('Erro', err instanceof ApiError ? err.message : 'Erro ao excluir.');
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   // ─── Detalhe de lista selecionada ────────────────────────────────────────
@@ -482,7 +478,9 @@ export default function ListsScreen() {
           list={selectedList}
           onBack={() => setSelectedList(null)}
           onListChanged={() => void load(true)}
+          onFeedback={setFeedback}
         />
+        <SuccessBanner message={feedback} onHide={() => setFeedback(null)} />
       </SafeAreaView>
     );
   }
@@ -591,6 +589,9 @@ export default function ListsScreen() {
           }}
         />
       )}
+
+      {/* Feedback de sucesso */}
+      <SuccessBanner message={feedback} onHide={() => setFeedback(null)} />
     </SafeAreaView>
   );
 }
@@ -599,6 +600,9 @@ export default function ListsScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  // Detalhe tem input fixo no rodapé — precisa terminar ACIMA da tab bar
+  // flutuante (~64 de altura + 16 de offset), senão o botão fica inacessível.
+  detailWrap: { flex: 1, paddingBottom: 88 },
   screen: { flex: 1, backgroundColor: colors.bg },
 
   header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
@@ -686,9 +690,9 @@ const styles = StyleSheet.create({
   backBtnText: { color: colors.accent, fontSize: 15, fontWeight: '600' },
   detailTitle: { fontSize: 18, fontWeight: '700', color: colors.text, flex: 1 },
 
-  // Tab bar flutuante — conteúdo rola por baixo dela; sem esse respiro os
-  // últimos itens ficavam escondidos/inacessíveis atrás da navbar.
-  detailListContent: { padding: 16, paddingBottom: 100, gap: 4 },
+  // O respiro da navbar vem do detailWrap (o footer fixo precisa dele);
+  // aqui só o espaçamento interno da lista.
+  detailListContent: { padding: 16, gap: 4 },
 
   // Item rows
   itemBlock: { gap: 4 },

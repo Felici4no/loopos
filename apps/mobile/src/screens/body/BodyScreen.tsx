@@ -20,13 +20,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getWorkouts, createWorkout, deleteWorkout, DataError as ApiError } from '../../lib/data.js';
+import { getWorkouts, DataError as ApiError } from '../../lib/data.js';
+import { registerWorkout, deleteWorkout } from '../../lib/actions.js';
+import { confirmDestructive } from '../../lib/confirm.js';
 import { parseWorkoutInput, formatParsedWorkout } from '../../lib/parseWorkoutInput.js';
 import {
   getWeeklyWorkoutSummary,
   getWeeklyRunKmSeries,
   getWeeklyPullupSeries,
-  getWorkoutSuccessMessage,
   formatKm,
 } from '../../lib/insights.js';
 import type { WorkoutEntry } from '../../types/workout.js';
@@ -55,21 +56,6 @@ function WorkoutCard({ item, onDelete, deleting }: WorkoutCardProps) {
   const parsed = item.rawInput ? parseWorkoutInput(item.rawInput) : null;
   const summary = parsed ? formatParsedWorkout(parsed) : null;
 
-  function handleDelete() {
-    Alert.alert(
-      'Excluir treino',
-      item.rawInput ? `"${item.rawInput}"` : 'Este treino',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => onDelete(item.id),
-        },
-      ],
-    );
-  }
-
   return (
     <View style={styles.card}>
       {/* Linha principal */}
@@ -78,7 +64,7 @@ function WorkoutCard({ item, onDelete, deleting }: WorkoutCardProps) {
           {item.rawInput ?? '—'}
         </Text>
         <TouchableOpacity
-          onPress={handleDelete}
+          onPress={() => onDelete(item.id)}
           disabled={deleting}
           style={styles.deleteBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -238,7 +224,7 @@ export default function BodyScreen() {
       const parsed = parseWorkoutInput(trimmed);
       const today = todayISO();
 
-      const created = await createWorkout({
+      const { data: created, message } = await registerWorkout({
         date: today,
         runKm: parsed.runKm ?? null,
         pullupSets: parsed.pullupSets ?? null,
@@ -249,7 +235,7 @@ export default function BodyScreen() {
       // Prepend: treino mais recente no topo
       setWorkouts((prev) => [created, ...prev]);
       setInput('');
-      setLastSaved(getWorkoutSuccessMessage(created));
+      setLastSaved(message);
     } catch (err) {
       const msg = err instanceof ApiError
         ? `Erro ao salvar: ${err.message}`
@@ -263,10 +249,20 @@ export default function BodyScreen() {
   // ─── Delete ──────────────────────────────────────────────────────────────
 
   async function handleDelete(id: string) {
+    const workout = workouts.find((w) => w.id === id);
+    const ok = await confirmDestructive({
+      title: 'Excluir este treino?',
+      message: workout?.rawInput
+        ? `"${workout.rawInput}" será removido permanentemente.`
+        : 'Este treino será removido permanentemente.',
+    });
+    if (!ok) return;
+
     setDeletingId(id);
     try {
-      await deleteWorkout(id);
+      const { message } = await deleteWorkout(id);
       setWorkouts((prev) => prev.filter((w) => w.id !== id));
+      setLastSaved(message);
     } catch (err) {
       const msg = err instanceof ApiError
         ? err.message

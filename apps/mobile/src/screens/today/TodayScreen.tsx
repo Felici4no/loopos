@@ -1,10 +1,9 @@
 /**
  * Tela Hoje — dashboard do LoopOS.
  *
- * Síntese visual dos módulos: além do snapshot do dia (getToday), agrega
- * históricos leves (treinos dos últimos 7 dias, trackers ativos, livro em
- * leitura) para responder de relance: treinei? quanto corri? como está a
- * semana? o que falta hoje? quanto avancei no livro?
+ * Renderiza o TodayDashboard (lib/dashboard.ts): todo o estado derivado —
+ * séries, jornadas, livro atual, progresso de listas — chega pronto.
+ * Esta tela só apresenta e interage; não calcula nada com dado solto.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,23 +14,14 @@ import {
   RefreshControl,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  getToday,
-  getWorkouts,
-  getTrackers,
-  getBooks,
-  DataError as ApiError,
-} from '../../lib/data.js';
+import { buildTodayDashboard, type TodayDashboard } from '../../lib/dashboard.js';
+import { formatKm } from '../../lib/insights.js';
+import { confirmDestructive } from '../../lib/confirm.js';
 import { resetDbWithSeed } from '../../lib/localDb.js';
-import type { TodayResponse } from '../../types/today.js';
-import type { WorkoutEntry } from '../../types/workout.js';
-import type { Tracker } from '../../types/rhythm.js';
-import type { Book } from '../../types/reading.js';
 import {
   Card,
   SectionTitle,
@@ -46,57 +36,22 @@ import {
   WeekBars,
   TrendLine,
 } from '../../components/viz.js';
-import {
-  parseISODate,
-  toISODate,
-  timeProgress,
-  formatKm,
-  getWeeklyRunKmSeries,
-  getWeeklyPullupSeries,
-} from '../../lib/insights.js';
-
-// ─── Date helpers ─────────────────────────────────────────────────────────────
-
-/** "quinta-feira, 2 de julho de 2026" com a primeira letra maiúscula. */
-function formatFullDate(iso: string): string {
-  const s = parseISODate(iso).toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 // ─── Corpo card ───────────────────────────────────────────────────────────────
 
-function BodyCard({
-  today,
-  workouts,
-}: {
-  today: TodayResponse['workouts'];
-  workouts: WorkoutEntry[];
-}) {
-  const endIso = today[0]?.date ?? toISODate(new Date());
-  const reps = getWeeklyPullupSeries(workouts, endIso);
-  const km = getWeeklyRunKmSeries(workouts, endIso);
-  const totalReps = reps.reduce((s, d) => s + d.value, 0);
-  const avgReps = Math.round(totalReps / 7);
-  const totalKm = km.reduce((s, d) => s + d.value, 0);
-  const hasHistory = totalReps > 0 || totalKm > 0;
-
-  const headline =
-    today.length > 0
-      ? today
-          .map((w) => w.rawInput)
-          .filter(Boolean)
-          .join(' · ') || 'Treino registrado'
-      : 'Sem treino hoje';
+function BodyCard({ body }: { body: TodayDashboard['body'] }) {
+  const trained = body.todayWorkouts.length > 0;
+  const headline = trained
+    ? body.todayWorkouts.map((w) => w.rawInput).filter(Boolean).join(' · ') ||
+      'Treino registrado'
+    : 'Sem treino hoje';
+  const totalReps = body.pullupSeries.reduce((s, d) => s + d.value, 0);
+  const hasHistory = totalReps > 0 || body.weeklyKm > 0;
 
   return (
     <Card>
-      <SectionTitle label="Corpo" meta={today.length > 0 ? 'treinou hoje' : undefined} />
-      <Text style={today.length > 0 ? styles.bodyHeadline : styles.bodyHeadlineMuted}>
+      <SectionTitle label="Corpo" meta={trained ? 'treinou hoje' : undefined} />
+      <Text style={trained ? styles.bodyHeadline : styles.bodyHeadlineMuted}>
         {headline}
       </Text>
 
@@ -106,18 +61,18 @@ function BodyCard({
             <View style={styles.vizBlock}>
               <View style={styles.vizHeader}>
                 <Text style={styles.vizLabel}>REPETIÇÕES · 7 DIAS</Text>
-                <Text style={styles.vizMeta}>média {avgReps}/dia</Text>
+                <Text style={styles.vizMeta}>média {body.weeklyPullupAverage}/dia</Text>
               </View>
-              <WeekBars data={reps} height={48} />
+              <WeekBars data={body.pullupSeries} height={48} />
             </View>
           )}
-          {totalKm > 0 && (
+          {body.weeklyKm > 0 && (
             <View style={styles.vizBlock}>
               <View style={styles.vizHeader}>
                 <Text style={styles.vizLabel}>KM POR DIA</Text>
-                <Text style={styles.vizMeta}>{formatKm(totalKm)} km na semana</Text>
+                <Text style={styles.vizMeta}>{formatKm(body.weeklyKm)} km na semana</Text>
               </View>
-              <TrendLine data={km} height={52} formatValue={formatKm} />
+              <TrendLine data={body.runKmSeries} height={52} formatValue={formatKm} />
             </View>
           )}
         </>
@@ -130,54 +85,8 @@ function BodyCard({
 
 // ─── Ritmo card ───────────────────────────────────────────────────────────────
 
-interface TrackerStatus {
-  tracker: Tracker;
-  current: number;
-  done: boolean;
-  progress: number | null; // null = sem meta numérica
-}
-
-function trackerStatuses(
-  trackers: Tracker[],
-  rhythm: TodayResponse['rhythm'],
-): TrackerStatus[] {
-  const statuses = trackers
-    .filter((t) => t.isActive)
-    .map((t) => {
-      const events = rhythm.filter((e) => e.tracker.id === t.id);
-      const current = events.reduce((s, e) => s + (e.value ?? 0), 0);
-      const checked = events.length > 0;
-      if (t.type === 'boolean' || t.target === null) {
-        return { tracker: t, current, done: checked, progress: null };
-      }
-      return {
-        tracker: t,
-        current,
-        done: current >= t.target,
-        progress: Math.min(current / t.target, 1),
-      };
-    });
-
-  // Pendentes com meta primeiro (mais acionáveis), concluídos por último.
-  return statuses.sort((a, b) => {
-    if (a.done !== b.done) return a.done ? 1 : -1;
-    if ((a.progress !== null) !== (b.progress !== null)) {
-      return a.progress !== null ? -1 : 1;
-    }
-    return 0;
-  });
-}
-
-function RhythmCard({
-  trackers,
-  rhythm,
-}: {
-  trackers: Tracker[];
-  rhythm: TodayResponse['rhythm'];
-}) {
-  const statuses = trackerStatuses(trackers, rhythm);
-
-  if (statuses.length === 0) {
+function RhythmCard({ rhythm }: { rhythm: TodayDashboard['rhythm'] }) {
+  if (rhythm.trackers.length === 0) {
     return (
       <Card>
         <SectionTitle label="Ritmo" />
@@ -186,36 +95,46 @@ function RhythmCard({
     );
   }
 
-  const doneCount = statuses.filter((s) => s.done).length;
-
   return (
     <Card>
-      <SectionTitle label="Ritmo" meta={`${doneCount}/${statuses.length} hoje`} />
+      <SectionTitle
+        label="Ritmo"
+        meta={`${rhythm.completedToday}/${rhythm.totalToday} hoje`}
+      />
       <View style={styles.trackerList}>
-        {statuses.map(({ tracker, current, done, progress }) => (
+        {rhythm.trackers.map(({ tracker, todayValue, target, progress, isDoneToday, label }) => (
           <View key={tracker.id} style={styles.trackerRow}>
             <Ionicons
-              name={done ? 'checkmark-circle' : 'ellipse-outline'}
+              name={isDoneToday ? 'checkmark-circle' : 'ellipse-outline'}
               size={18}
-              color={done ? colors.success : colors.textMuted}
+              color={isDoneToday ? colors.success : colors.textMuted}
             />
             <View style={styles.trackerBody}>
               <View style={styles.trackerHeader}>
-                <Text style={[styles.trackerTitle, done && styles.trackerTitleDone]}>
-                  {tracker.title}
-                </Text>
-                {progress !== null && tracker.target !== null && (
+                <View style={styles.trackerTitleBlock}>
+                  <Text
+                    style={[styles.trackerTitle, isDoneToday && styles.trackerTitleDone]}
+                  >
+                    {tracker.title}
+                  </Text>
+                  {label && (
+                    <Text style={styles.trackerJourney}>
+                      <Ionicons name="flame" size={10} color={colors.accent} /> {label}
+                    </Text>
+                  )}
+                </View>
+                {target !== null && (
                   <Text style={styles.trackerCount}>
-                    {current}
-                    <Text style={styles.trackerTarget}> / {tracker.target}</Text>
+                    {todayValue}
+                    <Text style={styles.trackerTarget}> / {target}</Text>
                   </Text>
                 )}
               </View>
-              {progress !== null && (
+              {target !== null && (
                 <ProgressBar
                   value={progress}
                   height={4}
-                  color={done ? colors.success : colors.accent}
+                  color={isDoneToday ? colors.success : colors.accent}
                 />
               )}
             </View>
@@ -228,16 +147,8 @@ function RhythmCard({
 
 // ─── Leitura card ─────────────────────────────────────────────────────────────
 
-function ReadingCard({
-  sessions,
-  books,
-}: {
-  sessions: TodayResponse['reading'];
-  books: Book[];
-}) {
-  // Livro em destaque: o da sessão de hoje, senão o primeiro em leitura.
-  const sessionBook = sessions[0]?.book;
-  const book = sessionBook ?? books[0];
+function ReadingCard({ reading }: { reading: TodayDashboard['reading'] }) {
+  const book = reading.currentBook;
 
   if (!book) {
     return (
@@ -248,36 +159,47 @@ function ReadingCard({
     );
   }
 
-  const current = book.currentPage ?? 0;
-  const total = book.totalPages;
-  const pct = total ? Math.min(current / total, 1) : null;
-  const pagesToday = sessions.reduce((s, x) => s + x.pagesRead, 0);
+  const pct = reading.currentBookProgress;
+  const isSuggestion = reading.currentBookKind === 'suggestion';
 
   return (
     <Card>
       <SectionTitle
         label="Leitura"
-        meta={pagesToday > 0 ? `${pagesToday} págs hoje` : undefined}
+        meta={
+          reading.pagesReadToday > 0
+            ? `${reading.pagesReadToday} págs hoje`
+            : isSuggestion
+              ? 'próximo livro'
+              : undefined
+        }
       />
+      {reading.finishedToday.length > 0 && (
+        <View style={styles.finishedTodayChip}>
+          <Ionicons name="trophy" size={12} color={colors.success} />
+          <Text style={styles.finishedTodayText}>
+            Você finalizou {reading.finishedToday[0]!.title} hoje
+          </Text>
+        </View>
+      )}
       <Text style={styles.bookTitle}>{book.title}</Text>
       {book.author && <Text style={styles.bookAuthor}>{book.author}</Text>}
 
-      {pct !== null ? (
+      {isSuggestion ? (
+        <Text style={styles.readingPages}>
+          Na sua fila — comece registrando a primeira sessão.
+        </Text>
+      ) : (
         <View style={styles.readingProgress}>
           <Text style={styles.readingPct}>{Math.round(pct * 100)}%</Text>
           <View style={styles.readingBarArea}>
             <ProgressBar value={pct} height={6} />
             <Text style={styles.readingPages}>
-              {current} de {total} páginas
-              {pagesToday === 0 && ' · nada lido hoje'}
+              {book.currentPage ?? 0} de {book.totalPages ?? 0} páginas
+              {reading.pagesReadToday === 0 && ' · nada lido hoje'}
             </Text>
           </View>
         </View>
-      ) : (
-        <Text style={styles.readingPages}>
-          página {current}
-          {pagesToday > 0 ? ` · ${pagesToday} lidas hoje` : ' · nada lido hoje'}
-        </Text>
       )}
     </Card>
   );
@@ -285,31 +207,45 @@ function ReadingCard({
 
 // ─── Listas card ──────────────────────────────────────────────────────────────
 
-function ListsCard({ data }: { data: TodayResponse['lists'] }) {
-  if (data.length === 0) {
+function ListsCard({ lists }: { lists: TodayDashboard['lists'] }) {
+  if (lists.rootLists.length === 0) {
     return (
       <Card>
         <SectionTitle label="Listas" />
-        <EmptyState message="Nenhuma lista atualizada hoje" hint="Crie ou edite na aba Listas" />
+        <EmptyState message="Nenhuma lista criada" hint="Crie na aba Listas" />
       </Card>
     );
   }
 
   return (
     <Card>
-      <SectionTitle label="Listas" meta={`${data.length} hoje`} />
-      {data.map((node) => (
-        <View key={node.id} style={styles.listRow}>
-          <Ionicons
-            name={node.isDone ? 'checkmark-circle' : 'chevron-forward'}
-            size={15}
-            color={node.isDone ? colors.success : colors.textMuted}
-          />
-          <Text style={[styles.listTitle, node.isDone && styles.listDone]}>
-            {node.title}
-          </Text>
-        </View>
-      ))}
+      <SectionTitle
+        label="Listas"
+        meta={
+          lists.updatedTodayCount > 0
+            ? `${lists.updatedTodayCount} hoje`
+            : undefined
+        }
+      />
+      <View style={styles.listRows}>
+        {lists.rootLists.map(({ node, totalItems, doneItems, progress }) => (
+          <View key={node.id} style={styles.listRow}>
+            <View style={styles.listHeader}>
+              <Text style={styles.listTitle}>{node.title}</Text>
+              <Text style={styles.listCount}>
+                {totalItems === 0 ? 'vazia' : `${doneItems}/${totalItems}`}
+              </Text>
+            </View>
+            {totalItems > 0 && (
+              <ProgressBar
+                value={progress}
+                height={4}
+                color={doneItems === totalItems ? colors.success : colors.accent}
+              />
+            )}
+          </View>
+        ))}
+      </View>
     </Card>
   );
 }
@@ -317,10 +253,7 @@ function ListsCard({ data }: { data: TodayResponse['lists'] }) {
 // ─── Today Screen ─────────────────────────────────────────────────────────────
 
 export default function TodayScreen() {
-  const [data, setData] = useState<TodayResponse | null>(null);
-  const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
-  const [trackers, setTrackers] = useState<Tracker[]>([]);
-  const [readingBooks, setReadingBooks] = useState<Book[]>([]);
+  const [dash, setDash] = useState<TodayDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -329,24 +262,10 @@ export default function TodayScreen() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
-
     try {
-      const [today, allWorkouts, allTrackers, booksReading] = await Promise.all([
-        getToday(),
-        getWorkouts(),
-        getTrackers(),
-        getBooks('READING'),
-      ]);
-      setData(today);
-      setWorkouts(allWorkouts);
-      setTrackers(allTrackers);
-      setReadingBooks(booksReading);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('Não foi possível carregar os dados locais.');
-      }
+      setDash(await buildTodayDashboard());
+    } catch {
+      setError('Não foi possível carregar os dados locais.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -358,17 +277,16 @@ export default function TodayScreen() {
   }, [load]);
 
   // Recarrega ao voltar para a aba (ex: após registrar treino em Corpo).
-  // hasDataRef (em vez de depender de `data`) mantém o callback estável:
-  // depender de `data` refazia o efeito a cada load — loop infinito com o
+  // hasDataRef (em vez de depender de `dash`) mantém o callback estável:
+  // depender do dado refazia o efeito a cada load — loop infinito com o
   // spinner do RefreshControl piscando ao lado do header.
   const hasDataRef = useRef(false);
   useEffect(() => {
-    hasDataRef.current = data !== null;
-  }, [data]);
+    hasDataRef.current = dash !== null;
+  }, [dash]);
 
   useFocusEffect(
     useCallback(() => {
-      // Só recarrega silenciosamente se já tiver dados (evita double-load na montagem)
       if (hasDataRef.current) {
         void load(true);
       }
@@ -383,19 +301,17 @@ export default function TodayScreen() {
     );
   }
 
-  if (error) {
+  if (error || !dash) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
         <ErrorState
-          message={error}
+          message={error ?? 'Dados indisponíveis.'}
           hint="Dados locais do aparelho (AsyncStorage)"
           onRetry={() => void load()}
         />
       </SafeAreaView>
     );
   }
-
-  const tp = data ? timeProgress(data.date) : null;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -415,28 +331,23 @@ export default function TodayScreen() {
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>Hoje</Text>
-            {data && (
-              <Text style={styles.headerDate}>{formatFullDate(data.date)}</Text>
-            )}
+            <Text style={styles.headerDate}>{dash.formattedDate}</Text>
           </View>
           <TouchableOpacity
             hitSlop={10}
             accessibilityLabel="Resetar dados de teste"
             onPress={() => {
-              Alert.alert(
-                'Resetar dados de teste',
-                'Apaga todos os dados e recria o seed inicial. Continuar?',
-                [
-                  { text: 'Cancelar', style: 'cancel' },
-                  {
-                    text: 'Resetar',
-                    style: 'destructive',
-                    onPress: () => {
-                      void resetDbWithSeed().then(() => void load());
-                    },
-                  },
-                ],
-              );
+              void (async () => {
+                const ok = await confirmDestructive({
+                  title: 'Resetar dados de teste',
+                  message: 'Apaga todos os dados e recria o seed inicial. Continuar?',
+                  confirmLabel: 'Resetar',
+                });
+                if (ok) {
+                  await resetDbWithSeed();
+                  void load();
+                }
+              })();
             }}
             style={styles.seedBtn}
           >
@@ -445,23 +356,25 @@ export default function TodayScreen() {
         </View>
 
         {/* Quanto do tempo já passou */}
-        {tp && (
-          <View style={styles.timeRow}>
-            <TimeProgress label="Semana" value={tp.week} />
-            <TimeProgress label="Mês" value={tp.month} />
-            <TimeProgress label="Ano" value={tp.year} />
+        <View style={styles.timeRow}>
+          <TimeProgress label="Semana" value={dash.timeProgress.week} />
+          <TimeProgress label="Mês" value={dash.timeProgress.month} />
+          <TimeProgress label="Ano" value={dash.timeProgress.year} />
+        </View>
+
+        {/* Conquista do dia (derivada, some quando não há) */}
+        {dash.achievements.length > 0 && (
+          <View style={styles.achievementRow}>
+            <Ionicons name="sparkles" size={12} color={colors.accent} />
+            <Text style={styles.achievementText}>{dash.achievements[0]}</Text>
           </View>
         )}
 
         {/* Cards */}
-        {data && (
-          <>
-            <BodyCard today={data.workouts} workouts={workouts} />
-            <RhythmCard trackers={trackers} rhythm={data.rhythm} />
-            <ReadingCard sessions={data.reading} books={readingBooks} />
-            <ListsCard data={data.lists} />
-          </>
-        )}
+        <BodyCard body={dash.body} />
+        <RhythmCard rhythm={dash.rhythm} />
+        <ReadingCard reading={dash.reading} />
+        <ListsCard lists={dash.lists} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -516,7 +429,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 18,
     marginTop: 2,
-    marginBottom: 4,
+  },
+  achievementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  achievementText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 
   // Corpo
@@ -570,8 +493,12 @@ const styles = StyleSheet.create({
   trackerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'flex-start',
     gap: 8,
+  },
+  trackerTitleBlock: {
+    flex: 1,
+    gap: 2,
   },
   trackerTitle: {
     fontSize: 15,
@@ -580,6 +507,11 @@ const styles = StyleSheet.create({
   },
   trackerTitleDone: {
     color: colors.textSecondary,
+  },
+  trackerJourney: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
   },
   trackerCount: {
     fontSize: 14,
@@ -594,6 +526,24 @@ const styles = StyleSheet.create({
   },
 
   // Leitura
+  finishedTodayChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(74, 222, 128, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  finishedTodayText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.success,
+  },
   bookTitle: {
     fontSize: 17,
     fontWeight: '700',
@@ -625,23 +575,33 @@ const styles = StyleSheet.create({
   readingPages: {
     fontSize: 12,
     color: colors.textSecondary,
+    marginTop: 4,
   },
 
   // Listas
+  listRows: {
+    gap: 12,
+    marginTop: 2,
+  },
   listRow: {
+    gap: 6,
+  },
+  listHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
     gap: 8,
-    paddingVertical: 4,
   },
   listTitle: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.text,
     flex: 1,
   },
-  listDone: {
-    color: colors.textMuted,
-    textDecorationLine: 'line-through',
+  listCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
 });
