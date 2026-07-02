@@ -3,24 +3,27 @@
  *
  * - Container arredondado com margens, descolado das bordas da tela.
  * - Indicador da aba ativa desliza entre os itens (Animated nativo, spring).
- * - Ícone/label ativos ganham escala e opacidade interpoladas da mesma
- *   animação do indicador — a seleção "viaja" junto.
+ * - Só ícones (Ionicons), sem labels: ativo usa a variante preenchida,
+ *   inativo a outline — semântica clara sem texto.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { colors } from './ui.js';
 
-// Ícones de texto simples — sem biblioteca de icons para manter deps mínimas
-const TAB_ICONS: Record<string, string> = {
-  Hoje: '◎',
-  Corpo: '▲',
-  Ritmo: '⟳',
-  Leitura: '▣',
-  Listas: '≡',
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+// Par ativo/inativo por aba: preenchido quando focado, outline quando não.
+const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
+  Hoje: { active: 'home', inactive: 'home-outline' },
+  Corpo: { active: 'barbell', inactive: 'barbell-outline' },
+  Ritmo: { active: 'pulse', inactive: 'pulse-outline' },
+  Leitura: { active: 'book', inactive: 'book-outline' },
+  Listas: { active: 'list', inactive: 'list-outline' },
 };
 
 const BAR_PADDING = 6;
@@ -43,9 +46,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   }, [state.index, position]);
 
   return (
-    <View
-      style={[styles.wrap, { bottom: Math.max(insets.bottom, 10) + 6 }]}
-    >
+    <View style={[styles.wrap, { bottom: Math.max(insets.bottom, 10) + 6 }]}>
       <View style={styles.bar}>
         <View style={styles.clip}>
           <BlurView
@@ -77,14 +78,18 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
             )}
             {state.routes.map((route, i) => {
               const focused = state.index === i;
+              const icons = TAB_ICONS[route.name] ?? {
+                active: 'ellipse' as IoniconName,
+                inactive: 'ellipse-outline' as IoniconName,
+              };
               const scale = position.interpolate({
                 inputRange: [i - 1, i, i + 1],
-                outputRange: [1, 1.15, 1],
+                outputRange: [1, 1.12, 1],
                 extrapolate: 'clamp',
               });
               const opacity = position.interpolate({
                 inputRange: [i - 1, i, i + 1],
-                outputRange: [0.5, 1, 0.5],
+                outputRange: [0.45, 1, 0.45],
                 extrapolate: 'clamp',
               });
 
@@ -105,33 +110,16 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
                   onPress={onPress}
                   style={styles.item}
                   accessibilityRole="tab"
+                  accessibilityLabel={route.name}
                   accessibilityState={{ selected: focused }}
                 >
-                  <Animated.Text
-                    allowFontScaling={false}
-                    style={[
-                      styles.icon,
-                      {
-                        opacity,
-                        transform: [{ scale }],
-                        color: focused ? colors.accent : colors.textSecondary,
-                      },
-                    ]}
-                  >
-                    {TAB_ICONS[route.name] ?? '•'}
-                  </Animated.Text>
-                  <Animated.Text
-                    allowFontScaling={false}
-                    style={[
-                      styles.label,
-                      {
-                        opacity,
-                        color: focused ? colors.accent : colors.textSecondary,
-                      },
-                    ]}
-                  >
-                    {route.name}
-                  </Animated.Text>
+                  <Animated.View style={{ opacity, transform: [{ scale }] }}>
+                    <Ionicons
+                      name={focused ? icons.active : icons.inactive}
+                      size={23}
+                      color={focused ? colors.accent : colors.textSecondary}
+                    />
+                  </Animated.View>
                 </Pressable>
               );
             })}
@@ -184,15 +172,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 9,
-    gap: 3,
-  },
-  icon: {
-    fontSize: 20,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.2,
+    paddingVertical: 13,
   },
 });

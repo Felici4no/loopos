@@ -120,16 +120,19 @@ export function Card({ children, style }: CardProps) {
 interface SectionTitleProps {
   label: string;
   count?: number;
+  /** Texto auxiliar alinhado à direita (ex.: "2/3 hoje"). */
+  meta?: string;
   style?: TextStyle;
 }
 
-export function SectionTitle({ label, count, style }: SectionTitleProps) {
+export function SectionTitle({ label, count, meta, style }: SectionTitleProps) {
   return (
     <View style={styles.sectionRow}>
       <Text style={[styles.sectionTitle, style]}>{label.toUpperCase()}</Text>
       {count !== undefined && (
         <Text style={styles.sectionCount}>{count}</Text>
       )}
+      {meta !== undefined && <Text style={styles.sectionMeta}>{meta}</Text>}
     </View>
   );
 }
@@ -229,6 +232,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 8,
+  },
+  sectionMeta: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    fontVariant: ['tabular-nums'],
   },
   center: {
     flex: 1,

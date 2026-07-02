@@ -1,17 +1,37 @@
 /**
- * Tela Hoje — módulo principal do LoopOS.
+ * Tela Hoje — dashboard do LoopOS.
  *
- * Chama GET /api/today e renderiza cards para cada módulo do dia.
- * Sem daily_entries — tudo é agregação real dos módulos.
+ * Síntese visual dos módulos: além do snapshot do dia (getToday), agrega
+ * históricos leves (treinos dos últimos 7 dias, trackers ativos, livro em
+ * leitura) para responder de relance: treinei? quanto corri? como está a
+ * semana? o que falta hoje? quanto avancei no livro?
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  RefreshControl,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getToday, DataError as ApiError } from '../../lib/data.js';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  getToday,
+  getWorkouts,
+  getTrackers,
+  getBooks,
+  DataError as ApiError,
+} from '../../lib/data.js';
 import { resetDbWithSeed } from '../../lib/localDb.js';
 import type { TodayResponse } from '../../types/today.js';
+import type { WorkoutEntry } from '../../types/workout.js';
+import type { Tracker } from '../../types/rhythm.js';
+import type { Book } from '../../types/reading.js';
 import {
   Card,
   SectionTitle,
@@ -20,135 +40,315 @@ import {
   EmptyState,
   colors,
 } from '../../components/ui.js';
+import {
+  ProgressBar,
+  TimeProgress,
+  WeekBars,
+  TrendLine,
+  type DayPoint,
+} from '../../components/viz.js';
 
-// ─── Formatters ───────────────────────────────────────────────────────────────
+// ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function parseISODate(iso: string): Date {
   const [year, month, day] = iso.split('-').map(Number);
   return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
 }
 
-function weekdayOf(iso: string): string {
-  return parseISODate(iso).toLocaleDateString('pt-BR', { weekday: 'long' });
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-function dayOf(iso: string): string {
-  return String(parseISODate(iso).getDate()).padStart(2, '0');
+/** "quinta-feira, 2 de julho de 2026" com a primeira letra maiúscula. */
+function formatFullDate(iso: string): string {
+  const s = parseISODate(iso).toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function monthOf(iso: string): string {
-  return parseISODate(iso)
-    .toLocaleDateString('pt-BR', { month: 'short' })
-    .replace('.', '')
-    .toUpperCase();
+/** Progresso do tempo: quanto da semana/mês/ano já passou (0–1). */
+function timeProgress(iso: string): { week: number; month: number; year: number } {
+  const d = parseISODate(iso);
+  const mondayIndex = (d.getDay() + 6) % 7; // seg=0 ... dom=6
+  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const startOfYear = new Date(d.getFullYear(), 0, 1);
+  const dayOfYear =
+    Math.floor((d.getTime() - startOfYear.getTime()) / 86_400_000) + 1;
+  const daysInYear =
+    (new Date(d.getFullYear() + 1, 0, 1).getTime() - startOfYear.getTime()) /
+    86_400_000;
+  return {
+    week: (mondayIndex + 1) / 7,
+    month: d.getDate() / daysInMonth,
+    year: dayOfYear / daysInYear,
+  };
 }
 
-// ─── Sub-cards ────────────────────────────────────────────────────────────────
+const WEEKDAY_INITIALS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'] as const;
 
-function WorkoutsCard({ data }: { data: TodayResponse['workouts'] }) {
-  if (data.length === 0) {
-    return (
-      <Card>
-        <SectionTitle label="Corpo" />
-        <EmptyState message="Nenhum treino hoje" hint="Registre na aba Corpo" />
-      </Card>
-    );
+/** Últimos `n` dias terminando em `endIso` (inclusive). */
+function lastDays(endIso: string, n: number): { iso: string; label: string }[] {
+  const end = parseISODate(endIso);
+  const out: { iso: string; label: string }[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(end.getTime() - i * 86_400_000);
+    out.push({ iso: toISODate(d), label: WEEKDAY_INITIALS[d.getDay()] ?? '' });
   }
+  return out;
+}
+
+// ─── Corpo: agregações ────────────────────────────────────────────────────────
+
+function repsByDay(workouts: WorkoutEntry[], days: { iso: string; label: string }[]): DayPoint[] {
+  return days.map((day, i) => ({
+    label: day.label,
+    emphasis: i === days.length - 1,
+    value: workouts
+      .filter((w) => w.date === day.iso)
+      .reduce((sum, w) => sum + (w.pullupSets ?? 0) * (w.pullupReps ?? 0), 0),
+  }));
+}
+
+function kmByDay(workouts: WorkoutEntry[], days: { iso: string; label: string }[]): DayPoint[] {
+  return days.map((day, i) => ({
+    label: day.label,
+    emphasis: i === days.length - 1,
+    value: workouts
+      .filter((w) => w.date === day.iso)
+      .reduce((sum, w) => sum + (w.runKm ?? 0), 0),
+  }));
+}
+
+function formatKm(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ',');
+}
+
+// ─── Corpo card ───────────────────────────────────────────────────────────────
+
+function BodyCard({
+  today,
+  workouts,
+}: {
+  today: TodayResponse['workouts'];
+  workouts: WorkoutEntry[];
+}) {
+  const days = lastDays(
+    today[0]?.date ?? toISODate(new Date()),
+    7,
+  );
+  const reps = repsByDay(workouts, days);
+  const km = kmByDay(workouts, days);
+  const totalReps = reps.reduce((s, d) => s + d.value, 0);
+  const avgReps = Math.round(totalReps / 7);
+  const totalKm = km.reduce((s, d) => s + d.value, 0);
+  const hasHistory = totalReps > 0 || totalKm > 0;
+
+  const headline =
+    today.length > 0
+      ? today
+          .map((w) => w.rawInput)
+          .filter(Boolean)
+          .join(' · ') || 'Treino registrado'
+      : 'Sem treino hoje';
 
   return (
     <Card>
-      <SectionTitle label="Corpo" count={data.length} />
-      {data.map((w) => (
-        <View key={w.id} style={styles.itemRow}>
-          {w.rawInput && (
-            <Text style={styles.itemLabel}>{w.rawInput}</Text>
+      <SectionTitle label="Corpo" meta={today.length > 0 ? 'treinou hoje' : undefined} />
+      <Text style={today.length > 0 ? styles.bodyHeadline : styles.bodyHeadlineMuted}>
+        {headline}
+      </Text>
+
+      {hasHistory ? (
+        <>
+          {totalReps > 0 && (
+            <View style={styles.vizBlock}>
+              <View style={styles.vizHeader}>
+                <Text style={styles.vizLabel}>REPETIÇÕES · 7 DIAS</Text>
+                <Text style={styles.vizMeta}>média {avgReps}/dia</Text>
+              </View>
+              <WeekBars data={reps} height={48} />
+            </View>
           )}
-          <View style={styles.statRow}>
-            {w.runKm !== null && (
-              <StatBadge value={`${w.runKm}km`} label="corrida" />
-            )}
-            {w.pullupSets !== null && w.pullupReps !== null && (
-              <StatBadge value={`${w.pullupSets}×${w.pullupReps}`} label="pullup" />
-            )}
-          </View>
-          {w.notes && <Text style={styles.itemNote}>{w.notes}</Text>}
-        </View>
-      ))}
-    </Card>
-  );
-}
-
-function RhythmCard({ data }: { data: TodayResponse['rhythm'] }) {
-  if (data.length === 0) {
-    return (
-      <Card>
-        <SectionTitle label="Ritmo" />
-        <EmptyState message="Nenhum hábito registrado hoje" hint="Registre na aba Ritmo" />
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <SectionTitle label="Ritmo" count={data.length} />
-      {data.map((e) => (
-        <View key={e.id} style={styles.rhythmRow}>
-          <View style={styles.checkDot} />
-          <View style={styles.rhythmContent}>
-            <Text style={styles.rhythmTitle}>{e.tracker.title}</Text>
-            {e.eventType === 'value' && e.value !== null && (
-              <Text style={styles.rhythmValue}>
-                {e.value}
-                {e.tracker.type === 'duration' ? ' min' : ''}
-              </Text>
-            )}
-            {e.note && <Text style={styles.itemNote}>{e.note}</Text>}
-          </View>
-        </View>
-      ))}
-    </Card>
-  );
-}
-
-function ReadingCard({ data }: { data: TodayResponse['reading'] }) {
-  if (data.length === 0) {
-    return (
-      <Card>
-        <SectionTitle label="Leitura" />
-        <EmptyState message="Nenhuma sessão de leitura hoje" hint="Registre na aba Leitura" />
-      </Card>
-    );
-  }
-
-  const totalPages = data.reduce((sum, s) => sum + s.pagesRead, 0);
-
-  return (
-    <Card>
-      <SectionTitle label="Leitura" count={data.length} />
-      {data.map((s) => (
-        <View key={s.id} style={styles.itemRow}>
-          <Text style={styles.itemLabel}>{s.book.title}</Text>
-          {s.book.author && <Text style={styles.itemSub}>{s.book.author}</Text>}
-          <View style={styles.statRow}>
-            <StatBadge value={`${s.pagesRead}p`} label="lidas" />
-            {s.fromPage !== null && s.toPage !== null && (
-              <StatBadge value={`${s.fromPage}–${s.toPage}`} label="páginas" />
-            )}
-            {s.book.currentPage !== null && s.book.totalPages !== null && (
-              <StatBadge
-                value={`${s.book.currentPage}/${s.book.totalPages}`}
-                label="progresso"
-              />
-            )}
-          </View>
-        </View>
-      ))}
-      {data.length > 1 && (
-        <Text style={styles.totalLine}>{totalPages} páginas no total hoje</Text>
+          {totalKm > 0 && (
+            <View style={styles.vizBlock}>
+              <View style={styles.vizHeader}>
+                <Text style={styles.vizLabel}>KM POR DIA</Text>
+                <Text style={styles.vizMeta}>{formatKm(totalKm)} km na semana</Text>
+              </View>
+              <TrendLine data={km} height={52} />
+            </View>
+          )}
+        </>
+      ) : (
+        <EmptyState message="Sem treinos na semana" hint="Registre na aba Corpo" />
       )}
     </Card>
   );
 }
+
+// ─── Ritmo card ───────────────────────────────────────────────────────────────
+
+interface TrackerStatus {
+  tracker: Tracker;
+  current: number;
+  done: boolean;
+  progress: number | null; // null = sem meta numérica
+}
+
+function trackerStatuses(
+  trackers: Tracker[],
+  rhythm: TodayResponse['rhythm'],
+): TrackerStatus[] {
+  const statuses = trackers
+    .filter((t) => t.isActive)
+    .map((t) => {
+      const events = rhythm.filter((e) => e.tracker.id === t.id);
+      const current = events.reduce((s, e) => s + (e.value ?? 0), 0);
+      const checked = events.length > 0;
+      if (t.type === 'boolean' || t.target === null) {
+        return { tracker: t, current, done: checked, progress: null };
+      }
+      return {
+        tracker: t,
+        current,
+        done: current >= t.target,
+        progress: Math.min(current / t.target, 1),
+      };
+    });
+
+  // Pendentes com meta primeiro (mais acionáveis), concluídos por último.
+  return statuses.sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    if ((a.progress !== null) !== (b.progress !== null)) {
+      return a.progress !== null ? -1 : 1;
+    }
+    return 0;
+  });
+}
+
+function RhythmCard({
+  trackers,
+  rhythm,
+}: {
+  trackers: Tracker[];
+  rhythm: TodayResponse['rhythm'];
+}) {
+  const statuses = trackerStatuses(trackers, rhythm);
+
+  if (statuses.length === 0) {
+    return (
+      <Card>
+        <SectionTitle label="Ritmo" />
+        <EmptyState message="Nenhum hábito ativo" hint="Crie um contador na aba Ritmo" />
+      </Card>
+    );
+  }
+
+  const doneCount = statuses.filter((s) => s.done).length;
+
+  return (
+    <Card>
+      <SectionTitle label="Ritmo" meta={`${doneCount}/${statuses.length} hoje`} />
+      <View style={styles.trackerList}>
+        {statuses.map(({ tracker, current, done, progress }) => (
+          <View key={tracker.id} style={styles.trackerRow}>
+            <Ionicons
+              name={done ? 'checkmark-circle' : 'ellipse-outline'}
+              size={18}
+              color={done ? colors.success : colors.textMuted}
+            />
+            <View style={styles.trackerBody}>
+              <View style={styles.trackerHeader}>
+                <Text style={[styles.trackerTitle, done && styles.trackerTitleDone]}>
+                  {tracker.title}
+                </Text>
+                {progress !== null && tracker.target !== null && (
+                  <Text style={styles.trackerCount}>
+                    {current}
+                    <Text style={styles.trackerTarget}> / {tracker.target}</Text>
+                  </Text>
+                )}
+              </View>
+              {progress !== null && (
+                <ProgressBar
+                  value={progress}
+                  height={4}
+                  color={done ? colors.success : colors.accent}
+                />
+              )}
+            </View>
+          </View>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+// ─── Leitura card ─────────────────────────────────────────────────────────────
+
+function ReadingCard({
+  sessions,
+  books,
+}: {
+  sessions: TodayResponse['reading'];
+  books: Book[];
+}) {
+  // Livro em destaque: o da sessão de hoje, senão o primeiro em leitura.
+  const sessionBook = sessions[0]?.book;
+  const book = sessionBook ?? books[0];
+
+  if (!book) {
+    return (
+      <Card>
+        <SectionTitle label="Leitura" />
+        <EmptyState message="Nenhum livro em leitura" hint="Adicione na aba Leitura" />
+      </Card>
+    );
+  }
+
+  const current = book.currentPage ?? 0;
+  const total = book.totalPages;
+  const pct = total ? Math.min(current / total, 1) : null;
+  const pagesToday = sessions.reduce((s, x) => s + x.pagesRead, 0);
+
+  return (
+    <Card>
+      <SectionTitle
+        label="Leitura"
+        meta={pagesToday > 0 ? `${pagesToday} págs hoje` : undefined}
+      />
+      <Text style={styles.bookTitle}>{book.title}</Text>
+      {book.author && <Text style={styles.bookAuthor}>{book.author}</Text>}
+
+      {pct !== null ? (
+        <View style={styles.readingProgress}>
+          <Text style={styles.readingPct}>{Math.round(pct * 100)}%</Text>
+          <View style={styles.readingBarArea}>
+            <ProgressBar value={pct} height={6} />
+            <Text style={styles.readingPages}>
+              {current} de {total} páginas
+              {pagesToday === 0 && ' · nada lido hoje'}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <Text style={styles.readingPages}>
+          página {current}
+          {pagesToday > 0 ? ` · ${pagesToday} lidas hoje` : ' · nada lido hoje'}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
+// ─── Listas card ──────────────────────────────────────────────────────────────
 
 function ListsCard({ data }: { data: TodayResponse['lists'] }) {
   if (data.length === 0) {
@@ -162,10 +362,14 @@ function ListsCard({ data }: { data: TodayResponse['lists'] }) {
 
   return (
     <Card>
-      <SectionTitle label="Listas" count={data.length} />
+      <SectionTitle label="Listas" meta={`${data.length} hoje`} />
       {data.map((node) => (
         <View key={node.id} style={styles.listRow}>
-          <Text style={styles.listBullet}>›</Text>
+          <Ionicons
+            name={node.isDone ? 'checkmark-circle' : 'chevron-forward'}
+            size={15}
+            color={node.isDone ? colors.success : colors.textMuted}
+          />
           <Text style={[styles.listTitle, node.isDone && styles.listDone]}>
             {node.title}
           </Text>
@@ -175,19 +379,13 @@ function ListsCard({ data }: { data: TodayResponse['lists'] }) {
   );
 }
 
-function StatBadge({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeValue}>{value}</Text>
-      <Text style={styles.badgeLabel}>{label}</Text>
-    </View>
-  );
-}
-
 // ─── Today Screen ─────────────────────────────────────────────────────────────
 
 export default function TodayScreen() {
   const [data, setData] = useState<TodayResponse | null>(null);
+  const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
+  const [trackers, setTrackers] = useState<Tracker[]>([]);
+  const [readingBooks, setReadingBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -198,13 +396,21 @@ export default function TodayScreen() {
     setError(null);
 
     try {
-      const result = await getToday();
-      setData(result);
+      const [today, allWorkouts, allTrackers, booksReading] = await Promise.all([
+        getToday(),
+        getWorkouts(),
+        getTrackers(),
+        getBooks('READING'),
+      ]);
+      setData(today);
+      setWorkouts(allWorkouts);
+      setTrackers(allTrackers);
+      setReadingBooks(booksReading);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError('Não foi possível conectar à API. Verifique se o servidor está rodando.');
+        setError('Não foi possível carregar os dados locais.');
       }
     } finally {
       setLoading(false);
@@ -254,6 +460,8 @@ export default function TodayScreen() {
     );
   }
 
+  const tp = data ? timeProgress(data.date) : null;
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <ScrollView
@@ -268,23 +476,17 @@ export default function TodayScreen() {
           />
         }
       >
-        {/* Header — a data é peça central: badge de vidro com dia + mês */}
+        {/* Header editorial: título + data corrida, seed discreto */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle}>Hoje</Text>
             {data && (
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeDay}>{dayOf(data.date)}</Text>
-                <Text style={styles.dateBadgeMonth}>{monthOf(data.date)}</Text>
-              </View>
+              <Text style={styles.headerDate}>{formatFullDate(data.date)}</Text>
             )}
-            <View>
-              <Text style={styles.headerTitle}>Hoje</Text>
-              {data && (
-                <Text style={styles.headerDate}>{weekdayOf(data.date)}</Text>
-              )}
-            </View>
           </View>
           <TouchableOpacity
+            hitSlop={10}
+            accessibilityLabel="Resetar dados de teste"
             onPress={() => {
               Alert.alert(
                 'Resetar dados de teste',
@@ -301,18 +503,27 @@ export default function TodayScreen() {
                 ],
               );
             }}
-            style={styles.resetBtn}
+            style={styles.seedBtn}
           >
-            <Text style={styles.resetBtnText}>↺ seed</Text>
+            <Ionicons name="refresh" size={15} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
+
+        {/* Quanto do tempo já passou */}
+        {tp && (
+          <View style={styles.timeRow}>
+            <TimeProgress label="Semana" value={tp.week} />
+            <TimeProgress label="Mês" value={tp.month} />
+            <TimeProgress label="Ano" value={tp.year} />
+          </View>
+        )}
 
         {/* Cards */}
         {data && (
           <>
-            <WorkoutsCard data={data.workouts} />
-            <RhythmCard data={data.rhythm} />
-            <ReadingCard data={data.reading} />
+            <BodyCard today={data.workouts} workouts={workouts} />
+            <RhythmCard trackers={trackers} rhythm={data.rhythm} />
+            <ReadingCard sessions={data.reading} books={readingBooks} />
             <ListsCard data={data.lists} />
           </>
         )}
@@ -333,162 +544,169 @@ const styles = StyleSheet.create({
     padding: 16,
     // Tab bar flutuante — conteúdo rola por baixo dela.
     paddingBottom: 100,
-    gap: 12,
+    gap: 14,
   },
+
+  // Header
   header: {
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  dateBadge: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.borderGlass,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    alignItems: 'center',
-    minWidth: 56,
-  },
-  dateBadgeDay: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.5,
-    lineHeight: 26,
-  },
-  dateBadgeMonth: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.accent,
-    letterSpacing: 1.5,
-    marginTop: 1,
-  },
-  resetBtn: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.borderGlass,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 2,
-  },
-  resetBtnText: {
-    fontSize: 11,
-    color: colors.textSecondary,
+  headerText: {
+    flex: 1,
+    gap: 3,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 34,
+    fontWeight: '800',
     color: colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   headerDate: {
     fontSize: 15,
     color: colors.textSecondary,
+    letterSpacing: -0.1,
+  },
+  seedBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    gap: 18,
     marginTop: 2,
-    textTransform: 'capitalize',
+    marginBottom: 4,
   },
-  itemRow: {
-    gap: 4,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  itemLabel: {
-    fontSize: 16,
+
+  // Corpo
+  bodyHeadline: {
+    fontSize: 17,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 4,
   },
-  itemSub: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  itemNote: {
-    fontSize: 12,
+  bodyHeadlineMuted: {
+    fontSize: 15,
     color: colors.textMuted,
-    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  vizBlock: {
+    marginTop: 12,
+    gap: 8,
+  },
+  vizHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  vizLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 1,
+    color: colors.textMuted,
+  },
+  vizMeta: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // Ritmo
+  trackerList: {
+    gap: 14,
     marginTop: 2,
   },
-  statRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 6,
-  },
-  badge: {
-    backgroundColor: colors.accentDim,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    alignItems: 'center',
-  },
-  badgeValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  badgeLabel: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  totalLine: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'right',
-  },
-  rhythmRow: {
+  trackerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
-  checkDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-    marginTop: 6,
+  trackerBody: {
+    flex: 1,
+    gap: 6,
   },
-  rhythmContent: { flex: 1, gap: 2 },
-  rhythmTitle: {
+  trackerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  trackerTitle: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.text,
   },
-  rhythmValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.accent,
+  trackerTitleDone: {
+    color: colors.textSecondary,
   },
+  trackerCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  trackerTarget: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+
+  // Leitura
+  bookTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  bookAuthor: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  readingProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 12,
+  },
+  readingPct: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.accent,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  readingBarArea: {
+    flex: 1,
+    gap: 6,
+  },
+  readingPages: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+
+  // Listas
   listRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    paddingVertical: 6,
-  },
-  listBullet: {
-    fontSize: 16,
-    color: colors.textMuted,
-    lineHeight: 22,
+    paddingVertical: 4,
   },
   listTitle: {
     fontSize: 15,
+    fontWeight: '500',
     color: colors.text,
     flex: 1,
   },
   listDone: {
-    textDecorationLine: 'line-through',
     color: colors.textMuted,
+    textDecorationLine: 'line-through',
   },
 });
