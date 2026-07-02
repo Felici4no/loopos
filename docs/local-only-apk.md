@@ -104,6 +104,47 @@ Supabase (não ativas ainda).
 
 ---
 
+## Build gerada
+
+Primeira APK funcional do v0.1, gerada em **2026-07-02**:
+
+| Campo | Valor |
+|-------|-------|
+| Build ID | `fee5e3a8-048e-4b49-a771-1bd7b2b285fe` |
+| Status | ✅ FINISHED |
+| Profile | `preview` (`buildType: apk`) |
+| Commit | `ed4fec1` |
+| Comando | `eas build -p android --profile preview --non-interactive` (em `apps/mobile`) |
+| Página do build | https://expo.dev/accounts/felici4nos-team/projects/loopos/builds/fee5e3a8-048e-4b49-a771-1bd7b2b285fe |
+| Download APK | https://expo.dev/artifacts/eas/eVKhQErg5ByzsxBjd2UfhhuTiOlZbVeKEf9rQLLOOB4.apk |
+| Expira no EAS | 2026-07-16 (baixe antes) |
+
+### Correções que destravaram o build
+
+1. **`.npmrc` com `node-linker=hoisted`** — o layout isolado do pnpm
+   impedia o Gradle de resolver `@react-native/gradle-plugin`
+   (dependência transitiva do react-native). Após mudar o linker,
+   delete todos os `node_modules` antes do `pnpm install` para não
+   ficar com layout misto.
+2. **`apps/mobile/metro.config.js`** — o Metro não resolvia imports
+   relativos com extensão `.js` apontando para `.ts/.tsx` (convenção
+   NodeNext do repo) nem o `@loopos/shared` fora do projectRoot.
+   Pré-validação local sem gastar build: `npx expo export -p android`.
+
+### Limitações desta build
+
+- **Dados 100% no aparelho** (AsyncStorage). Desinstalar o app — ou
+  limpar os dados nas configurações do Android — **apaga tudo, sem
+  backup**. Não há exportação nem sync nesta versão.
+- Supabase e o server Express **não** participam desta build; seguem no
+  repositório apenas como caminho futuro.
+- Keystore gerado e armazenado pelo EAS (`Build Credentials sHh3l3q937`);
+  nenhuma credencial commitada no repositório.
+- Distribuição `internal`: instale habilitando "fontes desconhecidas";
+  não é build de Play Store (para isso, profile `production`/AAB).
+
+---
+
 ## Caminho para integrar Supabase depois
 
 Quando o app estiver validado após 7 dias de uso real
