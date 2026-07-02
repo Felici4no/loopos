@@ -5,7 +5,7 @@
  * Sem daily_entries — tudo é agregação real dos módulos.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -202,14 +202,22 @@ export default function TodayScreen() {
     void load();
   }, [load]);
 
-  // Recarrega ao voltar para a aba (ex: após registrar treino em Corpo)
+  // Recarrega ao voltar para a aba (ex: após registrar treino em Corpo).
+  // hasDataRef (em vez de depender de `data`) mantém o callback estável:
+  // depender de `data` refazia o efeito a cada load — loop infinito com o
+  // spinner do RefreshControl piscando ao lado do header.
+  const hasDataRef = useRef(false);
+  useEffect(() => {
+    hasDataRef.current = data !== null;
+  }, [data]);
+
   useFocusEffect(
     useCallback(() => {
       // Só recarrega silenciosamente se já tiver dados (evita double-load na montagem)
-      if (data !== null) {
+      if (hasDataRef.current) {
         void load(true);
       }
-    }, [load, data]),
+    }, [load]),
   );
 
   if (loading) {
@@ -301,7 +309,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     padding: 16,
-    paddingBottom: 40,
+    // Tab bar flutuante — conteúdo rola por baixo dela.
+    paddingBottom: 100,
     gap: 12,
   },
   header: {
@@ -312,16 +321,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   resetBtn: {
+    backgroundColor: colors.surfaceGlass,
     borderWidth: 1,
-    borderColor: colors.textMuted,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderColor: colors.borderGlass,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     marginBottom: 2,
   },
   resetBtnText: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   headerTitle: {
     fontSize: 32,

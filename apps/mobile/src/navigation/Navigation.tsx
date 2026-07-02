@@ -7,7 +7,8 @@
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import TodayScreen from '../screens/today/TodayScreen.js';
 import BodyScreen from '../screens/body/BodyScreen.js';
 import RhythmScreen from '../screens/rhythm/RhythmScreen.js';
@@ -48,18 +49,35 @@ export default function Navigation() {
         tabBarIcon: ({ focused }) => (
           <TabIcon name={route.name} focused={focused} />
         ),
+        // Glassmorphism: tab bar flutuante e translúcida — o conteúdo rola
+        // por baixo e aparece desfocado através do BlurView.
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          position: 'absolute',
+          backgroundColor: 'transparent',
+          borderTopColor: colors.borderGlass,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          elevation: 0,
+          height: 64,
+          paddingBottom: 10,
           paddingTop: 8,
         },
+        tabBarBackground: () => (
+          <BlurView
+            tint="dark"
+            intensity={40}
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          >
+            <View style={{ flex: 1, backgroundColor: colors.tabBarGlass }} />
+          </BlurView>
+        ),
+        // allowFontScaling: false evita que a escala de fonte do sistema
+        // estoure as labels para fora do componente.
+        tabBarAllowFontScaling: false,
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
-          letterSpacing: 0.3,
+          letterSpacing: 0.2,
         },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,

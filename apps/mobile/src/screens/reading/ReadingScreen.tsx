@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   },
   feedbackText: { color: colors.success, fontSize: 13, fontWeight: '500' },
 
-  listContent: { padding: 16, paddingBottom: 40, gap: 10 },
+  listContent: { padding: 16, paddingBottom: 100, gap: 10 },
 
   sectionRow: {
     flexDirection: 'row',

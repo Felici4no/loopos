@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
   newListBtnDisabled: { opacity: 0.4 },
   newListBtnText: { color: colors.bg, fontWeight: '700', fontSize: 13 },
 
-  listContent: { padding: 16, paddingBottom: 40, gap: 10 },
+  listContent: { padding: 16, paddingBottom: 100, gap: 10 },
   listEmpty: { flex: 1 },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 60 },

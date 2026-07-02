@@ -24,6 +24,11 @@ export const colors = {
   bg: '#0a0a0a',
   surface: '#141414',
   border: '#222222',
+  // Glassmorphism: superfícies translúcidas sobre o fundo escuro,
+  // com hairline claro de baixa opacidade fazendo o papel de "borda de vidro".
+  surfaceGlass: 'rgba(255, 255, 255, 0.055)',
+  borderGlass: 'rgba(255, 255, 255, 0.10)',
+  tabBarGlass: 'rgba(10, 10, 10, 0.55)',
   text: '#ffffff',
   textSecondary: '#888888',
   textMuted: '#444444',
@@ -146,15 +151,17 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    // Tab bar flutuante (position absolute) — o conteúdo rola por baixo dela,
+    // então precisa de respiro extra no fim.
+    paddingBottom: 100,
     gap: 16,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    backgroundColor: colors.surfaceGlass,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderGlass,
   },
   sectionRow: {
     flexDirection: 'row',

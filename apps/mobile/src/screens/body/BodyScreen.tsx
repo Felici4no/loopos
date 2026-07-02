@@ -420,7 +420,8 @@ const styles = StyleSheet.create({
   // List
   listContent: {
     padding: 16,
-    paddingBottom: 40,
+    // Tab bar flutuante — conteúdo rola por baixo dela.
+    paddingBottom: 100,
     gap: 10,
   },
   sectionRow: {
